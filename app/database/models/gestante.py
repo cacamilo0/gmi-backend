@@ -1,0 +1,42 @@
+import uuid
+from datetime import date, datetime
+
+from sqlmodel import SQLModel, Field
+
+
+class Gestante(SQLModel, table=True):
+    __tablename__ = "gestante"
+    __table_args__ = {"schema": "gmi"}
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    codigo_gmi: str = Field(max_length=20, unique=True)
+    fecha_nacimiento: date
+    # TODO: foreign keys se agregan después cuando se creen los modelos
+    nacionalidad_id: int | None = None
+    eapb_id: int | None = None
+    pertenencia_etnica_id: int | None = None
+    grupo_poblacional_id: int | None = None
+    tipo_regimen: str | None = Field(default=None, max_length=20)
+    fecha_ultima_menstruacion: date
+    fecha_probable_parto: date | None = None
+    anio_ingreso: int
+    fecha_ingreso_cpn: date | None = None
+    semanas_eg_ingreso: int | None = None
+    activa: bool = Field(default=True)
+    # nullable porque cuando la gestante se crea por primera vez, el módulo se calcula con la fum
+    modulo_activo_id: int | None = Field(default=None, foreign_key="gmi_catalogo.cat_modulo_clinico.id")
+    created_at: datetime | None = Field(default_factory=datetime.utcnow)
+    updated_at: datetime | None = Field(default_factory=datetime.utcnow)
+    created_by: str | None = Field(default=None, foreign_key="gmi_auth.usuario_staff.id")
+
+
+class PreguntaSeguridad(SQLModel, table=True):
+    __tablename__ = "pregunta_seguridad"
+    __table_args__ = {"schema": "gmi"}
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    # relación 1:1 con gestante
+    gestante_id: str = Field(foreign_key="gmi.gestante.id", unique=True)
+    pregunta: str = Field(max_length=200)
+    hash_respuesta: str = Field(max_length=256)
+    created_at: datetime | None = Field(default_factory=datetime.utcnow)
