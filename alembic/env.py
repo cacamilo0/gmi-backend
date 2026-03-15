@@ -6,6 +6,18 @@ from sqlmodel import SQLModel
 
 from app.database.base import *
 
+# template para que alembic incluya el import de sqlmodel en migraciones autogeneradas
+from alembic.script import write_hooks
+
+@write_hooks.register("add_sqlmodel_import")
+def add_sqlmodel_import(filename, options):
+    with open(filename, "r") as f:
+        content = f.read()
+    if "sqlmodel" in content and "import sqlmodel" not in content:
+        content = content.replace("import sqlalchemy as sa", "import sqlalchemy as sa\nimport sqlmodel")
+        with open(filename, "w") as f:
+            f.write(content)
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
