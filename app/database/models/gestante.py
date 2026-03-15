@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from sqlmodel import SQLModel, Field
 
-
+# table=True significará que no será solo un schema sino también una tabla
 class Gestante(SQLModel, table=True):
     __tablename__ = "gestante"
     __table_args__ = {"schema": "gmi"}
