@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.exceptions import GMIException, gmi_exception_handler
 from app.config import settings
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,6 +20,9 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+# registrar exception handler
+app.add_exception_handler(GMIException, gmi_exception_handler)
 
 # CORS
 app.add_middleware(
@@ -37,6 +40,6 @@ async def health_check():
 
 
 # routers
-# from app.modules.auth.router import router as auth_router
+from app.modules.auth.router import router as auth_router
 
-# app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
