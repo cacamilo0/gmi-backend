@@ -42,5 +42,7 @@ async def health_check():
 
 # routers
 from app.modules.auth.router import router as auth_router
+from app.modules.m0.router import router as m0_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(m0_router, prefix="/api/v1/m0", tags=["M0 - Registro y Perfil"])
