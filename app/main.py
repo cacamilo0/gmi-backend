@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.exceptions import GMIException, gmi_exception_handler
 from app.config import settings
+import app.database.base # noqa: F401 - carga todos los modelos al iniciar
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
