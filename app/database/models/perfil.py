@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 from sqlmodel import SQLModel, Field
 
@@ -43,7 +43,7 @@ class AntecedentePatologico(SQLModel, table=True):
     gestante_id: str = Field(foreign_key="gmi.gestante.id")
     tipo_condicion: str = Field(max_length=100)
     descripcion: str | None = None
-    fecha_diagnostico: str | None = None  # date
+    fecha_diagnostico: date | None = None  # date
     controlada: bool | None = None
     tratamiento_actual: str | None = None
     created_at: datetime | None = Field(default_factory=datetime.utcnow)
