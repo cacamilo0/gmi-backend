@@ -8,19 +8,12 @@ from app.database.models.desenlace import (
     Puerperio,
     RecienNacido,
 )
-from app.modules.m4.schemas import (
-    BirthRecordCreate,
-    BirthRecordUpdate,
-    ContraceptionCreate,
-    NewbornCreate,
-    PostpartumCreate,
-)
 
 
 # BIRTH RECORD
 
-async def create_birth_record(db: AsyncSession, gestante_id: str, data: BirthRecordCreate) -> Parto:
-    parto = Parto(gestante_id=gestante_id, **data.model_dump())
+async def create_birth_record(db: AsyncSession, gestante_id: str, data: dict) -> Parto:
+    parto = Parto(gestante_id=gestante_id, **data)
     db.add(parto)
     await db.commit()
     await db.refresh(parto)
@@ -34,8 +27,8 @@ async def get_birth_record_by_gestante(db: AsyncSession, gestante_id: str) -> Pa
     return result.scalar_one_or_none()
 
 
-async def update_birth_record(db: AsyncSession, parto: Parto, data: BirthRecordUpdate) -> Parto:
-    for field, value in data.model_dump(exclude_none=True).items():
+async def update_birth_record(db: AsyncSession, parto: Parto, data: dict) -> Parto:
+    for field, value in data.items():
         setattr(parto, field, value)
     db.add(parto)
     await db.commit()
@@ -45,8 +38,8 @@ async def update_birth_record(db: AsyncSession, parto: Parto, data: BirthRecordU
 
 # NEWBORN
 
-async def create_newborn(db: AsyncSession, parto_id: str, data: NewbornCreate) -> RecienNacido:
-    recien_nacido = RecienNacido(parto_id=parto_id, **data.model_dump())
+async def create_newborn(db: AsyncSession, parto_id: str, data: dict) -> RecienNacido:
+    recien_nacido = RecienNacido(parto_id=parto_id, **data)
     db.add(recien_nacido)
     await db.commit()
     await db.refresh(recien_nacido)
@@ -60,10 +53,10 @@ async def get_newborns_by_parto(db: AsyncSession, parto_id: str) -> list[RecienN
     return result.scalars().all()
 
 
-# POSTPARTUM (Puerperio)
+# POSTPARTUM
 
-async def create_postpartum(db: AsyncSession, gestante_id: str, data: PostpartumCreate) -> Puerperio:
-    puerperio = Puerperio(gestante_id=gestante_id, **data.model_dump())
+async def create_postpartum(db: AsyncSession, gestante_id: str, data: dict) -> Puerperio:
+    puerperio = Puerperio(gestante_id=gestante_id, **data)
     db.add(puerperio)
     await db.commit()
     await db.refresh(puerperio)
@@ -94,9 +87,9 @@ async def get_postpartum_evolution(
 # CONTRACEPTION
 
 async def create_contraception(
-    db: AsyncSession, gestante_id: str, data: ContraceptionCreate
+    db: AsyncSession, gestante_id: str, data: dict
 ) -> AnticoncepcionPosparto:
-    anticoncepcion = AnticoncepcionPosparto(gestante_id=gestante_id, **data.model_dump())
+    anticoncepcion = AnticoncepcionPosparto(gestante_id=gestante_id, **data)
     db.add(anticoncepcion)
     await db.commit()
     await db.refresh(anticoncepcion)
