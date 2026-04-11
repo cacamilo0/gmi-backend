@@ -45,6 +45,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.m0.router import router as m0_router
 from app.modules.clinical.router import router as clinical_router
 from app.modules.m5.router import router as m5_router
+from app.modules.m4.router import router as m4_router
 
 
 from app.modules.admin.router import router as admin_router
@@ -53,4 +54,5 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(m0_router, prefix="/api/v1/m0", tags=["M0 - Registro y Perfil"])
 app.include_router(clinical_router, prefix="/api/v1/clinical", tags=["Clinical - Seguimiento Clínico"])
 app.include_router(m5_router, prefix="/api/v1/m5", tags=["M5 - Educación y Autocuidado"])
+app.include_router(m4_router, prefix="/api/v1/m4", tags=["M4 - Parto y Puerperio"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin - Administración"])
