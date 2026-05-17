@@ -225,3 +225,25 @@ async def create_carga_detalles(
         )
         db.add(detalle)
     await db.commit()
+
+
+# =====================================================================
+# STUBS PARA NUEVAS ENTIDADES DEL PANEL ADMIN
+# =====================================================================
+# TODO: Implementar acceso a BD cuando los modelos SQLAlchemy estén listos:
+# 
+# -- Usuarios y Roles --
+# async def get_users(db: AsyncSession, skip, limit): ...
+# async def get_roles(db: AsyncSession, skip, limit): ...
+# 
+# -- Catálogos --
+# async def get_catalog_items(db: AsyncSession, catalog: str, skip, limit): ...
+# 
+# -- Contenido Educativo --
+# async def get_educational_content(db: AsyncSession, skip, limit): ...
+# 
+# -- Preguntas de Seguimiento --
+# async def get_follow_up_questions(db: AsyncSession, skip, limit): ...
+# 
+# -- Auditoría y Monitoreo --
+# async def get_audit_logs(db: AsyncSession, skip, limit): ...
