@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.database.models.gestante import Gestante, PreguntaSeguridad
-from app.database.models.auth import UsuarioStaff
+from app.database.models.auth import UsuarioStaff, Rol
 
 async def get_gestante_by_codigo(db: AsyncSession, codigo_gmi: str) -> Gestante | None:
     result = await db.execute(
@@ -28,6 +28,12 @@ async def get_pregunta_by_codigo_gmi(db: AsyncSession, codigo_gmi: str) -> Pregu
 async def get_staff_by_email(db: AsyncSession, email: str) -> UsuarioStaff | None:
     result = await db.execute(
         select(UsuarioStaff).where(UsuarioStaff.email == email)
+    )
+    return result.scalar_one_or_none()
+
+async def get_rol_by_id(db: AsyncSession, id: int) -> Rol | None:
+    result = await db.execute(
+        select(Rol).where(Rol.id == id)
     )
     return result.scalar_one_or_none()
 
