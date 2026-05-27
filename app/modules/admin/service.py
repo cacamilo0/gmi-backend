@@ -9,7 +9,9 @@ from sqlalchemy import select
 
 from app.modules.admin.excel.processor import process_excel
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
-from app.modules.admin import schemas
+from app.modules.admin import schemas, repository
+from app.core.security import hash_password
+from app.core.exceptions import NotFoundException, ConflictException
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "gmi_uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -79,20 +81,48 @@ def _not_implemented():
 
 # ---- 11.1 Usuarios y Roles ----
 
-async def get_staff_users(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def get_staff_users(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc") -> list[schemas.UserResponse]:
+    offset = (page - 1) * size
+    users = await repository.get_all_staff(db, offset, size)
+    return [schemas.UserResponse.model_validate(u) for u in users]
 
-async def create_staff_user(db: AsyncSession, data: schemas.UserCreate):
-    _not_implemented()
 
-async def update_staff_user(db: AsyncSession, user_id: str, data: schemas.UserUpdate):
-    _not_implemented()
+async def create_staff_user(db: AsyncSession, data: schemas.UserCreate) -> schemas.UserResponse:
+    existing = await repository.get_staff_by_email(db, data.email)
+    if existing:
+        raise ConflictException("Ya existe un usuario con ese email.")
 
-async def update_staff_user_status(db: AsyncSession, user_id: str, data: schemas.UserStatusUpdate):
-    _not_implemented()
+    rol = await repository.get_rol_by_id(db, data.rol_id)
+    if rol is None:
+        raise NotFoundException("Rol no encontrado.")
 
-async def get_roles(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+    user = await repository.create_staff(db, data.nombre, data.email, hash_password(data.password), data.rol_id)
+    return schemas.UserResponse.model_validate(user)
+
+
+async def update_staff_user(db: AsyncSession, user_id: str, data: schemas.UserUpdate) -> schemas.UserResponse:
+    if data.rol_id is not None:
+        rol = await repository.get_rol_by_id(db, data.rol_id)
+        if rol is None:
+            raise NotFoundException("Rol no encontrado.")
+
+    user = await repository.update_staff(db, user_id, nombre=data.nombre, rol_id=data.rol_id)
+    if user is None:
+        raise NotFoundException("Usuario no encontrado.")
+    return schemas.UserResponse.model_validate(user)
+
+
+async def update_staff_user_status(db: AsyncSession, user_id: str, data: schemas.UserStatusUpdate) -> schemas.UserResponse:
+    user = await repository.set_staff_status(db, user_id, data.activo)
+    if user is None:
+        raise NotFoundException("Usuario no encontrado.")
+    return schemas.UserResponse.model_validate(user)
+
+
+async def get_roles(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc") -> list[schemas.RoleResponse]:
+    offset = (page - 1) * size
+    roles = await repository.get_all_roles(db, offset, size)
+    return [schemas.RoleResponse.model_validate(r) for r in roles]
 
 
 # ---- 11.3 Catálogos ----
