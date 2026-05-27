@@ -35,36 +35,37 @@ class CargaExcelDetalleResponse(CargaExcelResponse):
 # ---- 11.1 Usuarios y Roles ----
 
 class RoleResponse(BaseModel):
-    id: str
+    id: int
     nombre: str
     descripcion: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
+
 class UserCreate(BaseModel):
     email: str
-    nombres: str
-    apellidos: str
-    rol_id: str
+    nombre: str
+    rol_id: int
     password: str
 
+
 class UserUpdate(BaseModel):
-    nombres: Optional[str] = None
-    apellidos: Optional[str] = None
-    rol_id: Optional[str] = None
+    nombre: Optional[str] = None
+    rol_id: Optional[int] = None
+
 
 class UserStatusUpdate(BaseModel):
     activo: bool
 
+
 class UserResponse(BaseModel):
     id: str
     email: str
-    nombres: str
-    apellidos: str
-    rol_id: str
+    nombre: str
+    rol_id: int
     activo: bool
-    created_at: Optional[datetime]
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
