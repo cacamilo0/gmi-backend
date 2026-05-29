@@ -127,17 +127,53 @@ async def get_roles(db: AsyncSession, page: int = 1, size: int = 20, sort: str =
 
 # ---- 11.3 Catálogos ----
 
-async def get_catalog_items(db: AsyncSession, catalog_name: str, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+def _resolve_catalog(catalog_name: str) -> type:
+    model = repository.CATALOG_MAP.get(catalog_name)
+    if model is None:
+        raise NotFoundException(f"Catálogo '{catalog_name}' no existe. Catálogos válidos: {', '.join(repository.CATALOG_MAP)}")
+    return model
 
-async def create_catalog_item(db: AsyncSession, catalog_name: str, data: schemas.CatalogItemCreate):
-    _not_implemented()
 
-async def update_catalog_item(db: AsyncSession, catalog_name: str, item_id: str, data: schemas.CatalogItemUpdate):
-    _not_implemented()
+async def get_catalog_items(
+    db: AsyncSession, catalog_name: str, page: int = 1, size: int = 20
+) -> list[schemas.CatalogItemResponse]:
+    model = _resolve_catalog(catalog_name)
+    offset = (page - 1) * size
+    items = await repository.list_catalog_items(db, model, offset, size)
+    return [schemas.CatalogItemResponse.model_validate(item) for item in items]
 
-async def update_catalog_item_status(db: AsyncSession, catalog_name: str, item_id: str, data: schemas.CatalogItemStatusUpdate):
-    _not_implemented()
+
+async def create_catalog_item(
+    db: AsyncSession, catalog_name: str, data: schemas.CatalogItemCreate
+) -> schemas.CatalogItemResponse:
+    model = _resolve_catalog(catalog_name)
+    payload = data.model_dump(exclude_none=True)
+    if "codigo" in payload:
+        existing = await repository.get_catalog_item_by_codigo(db, model, payload["codigo"])
+        if existing:
+            raise ConflictException(f"Ya existe un ítem con codigo '{payload['codigo']}' en {catalog_name}.")
+    item = await repository.insert_catalog_item(db, model, payload)
+    return schemas.CatalogItemResponse.model_validate(item)
+
+
+async def update_catalog_item(
+    db: AsyncSession, catalog_name: str, item_id: int, data: schemas.CatalogItemUpdate
+) -> schemas.CatalogItemResponse:
+    model = _resolve_catalog(catalog_name)
+    item = await repository.edit_catalog_item(db, model, item_id, data.model_dump(exclude_unset=True))
+    if item is None:
+        raise NotFoundException("Ítem de catálogo no encontrado.")
+    return schemas.CatalogItemResponse.model_validate(item)
+
+
+async def update_catalog_item_status(
+    db: AsyncSession, catalog_name: str, item_id: int, data: schemas.CatalogItemStatusUpdate
+) -> schemas.CatalogItemResponse:
+    model = _resolve_catalog(catalog_name)
+    item = await repository.toggle_catalog_item_status(db, model, item_id, data.activo)
+    if item is None:
+        raise NotFoundException("Ítem de catálogo no encontrado.")
+    return schemas.CatalogItemResponse.model_validate(item)
 
 
 # ---- 11.4 Contenido Educativo ----

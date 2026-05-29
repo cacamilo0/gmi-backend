@@ -122,12 +122,11 @@ async def list_catalog_items(
     catalogName: str,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    sort: str = "fecha_desc",
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Listar ítems"""
-    return await service.get_catalog_items(db, catalogName, page, size, sort)
+    return await service.get_catalog_items(db, catalogName, page, size)
 
 @router.post("/catalogs/{catalogName}", response_model=schemas.CatalogItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_catalog_item(
@@ -142,7 +141,7 @@ async def create_catalog_item(
 @router.put("/catalogs/{catalogName}/{id}", response_model=schemas.CatalogItemResponse)
 async def update_catalog_item(
     catalogName: str,
-    id: str,
+    id: int,
     request: schemas.CatalogItemUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -153,7 +152,7 @@ async def update_catalog_item(
 @router.patch("/catalogs/{catalogName}/{id}/status", response_model=schemas.CatalogItemResponse)
 async def update_catalog_item_status(
     catalogName: str,
-    id: str,
+    id: int,
     request: schemas.CatalogItemStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),

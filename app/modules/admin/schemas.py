@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ---- 11.2 Carga Masiva Excel ----
@@ -74,21 +74,30 @@ class UserResponse(BaseModel):
 # ---- 11.3 Catálogos ----
 
 class CatalogItemCreate(BaseModel):
-    codigo: str
-    nombre: str
+    codigo: Optional[str] = None
+    nombre: Optional[str] = None
+    grupo: Optional[str] = None
     descripcion: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_name(self) -> "CatalogItemCreate":
+        if not self.nombre and not self.codigo and not self.grupo:
+            raise ValueError("Se requiere al menos uno de: nombre, codigo, grupo.")
+        return self
 
 class CatalogItemUpdate(BaseModel):
     nombre: Optional[str] = None
+    grupo: Optional[str] = None
     descripcion: Optional[str] = None
 
 class CatalogItemStatusUpdate(BaseModel):
     activo: bool
 
 class CatalogItemResponse(BaseModel):
-    id: str
-    codigo: str
-    nombre: str
+    id: int
+    codigo: Optional[str] = None
+    nombre: Optional[str] = None
+    grupo: Optional[str] = None
     descripcion: Optional[str] = None
     activo: bool
 
