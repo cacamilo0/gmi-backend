@@ -225,3 +225,173 @@ async def create_carga_detalles(
         )
         db.add(detalle)
     await db.commit()
+
+
+# =====================================================================
+# USUARIOS Y ROLES
+# =====================================================================
+
+from app.database.models.auth import UsuarioStaff, Rol
+
+
+async def get_all_staff(db: AsyncSession, offset: int, limit: int) -> list[UsuarioStaff]:
+    result = await db.execute(
+        select(UsuarioStaff)
+        .order_by(UsuarioStaff.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_staff_by_id(db: AsyncSession, user_id: str) -> UsuarioStaff | None:
+    result = await db.execute(
+        select(UsuarioStaff).where(UsuarioStaff.id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_staff_by_email(db: AsyncSession, email: str) -> UsuarioStaff | None:
+    result = await db.execute(
+        select(UsuarioStaff).where(UsuarioStaff.email == email)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_staff(
+    db: AsyncSession, nombre: str, email: str, hashed_pw: str, rol_id: int
+) -> UsuarioStaff:
+    user = UsuarioStaff(nombre=nombre, email=email, hash_password=hashed_pw, rol_id=rol_id)
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def update_staff(
+    db: AsyncSession, user_id: str, nombre: str | None = None, rol_id: int | None = None
+) -> UsuarioStaff | None:
+    user = await get_staff_by_id(db, user_id)
+    if user is None:
+        return None
+    if nombre is not None:
+        user.nombre = nombre
+    if rol_id is not None:
+        user.rol_id = rol_id
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def set_staff_status(db: AsyncSession, user_id: str, activo: bool) -> UsuarioStaff | None:
+    user = await get_staff_by_id(db, user_id)
+    if user is None:
+        return None
+    user.activo = activo
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def get_all_roles(db: AsyncSession, offset: int, limit: int) -> list[Rol]:
+    result = await db.execute(
+        select(Rol)
+        .order_by(Rol.nombre)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_rol_by_id(db: AsyncSession, rol_id: int) -> Rol | None:
+    result = await db.execute(
+        select(Rol).where(Rol.id == rol_id)
+    )
+    return result.scalar_one_or_none()
+
+
+# =====================================================================
+# CATÁLOGOS
+# =====================================================================
+
+from typing import Any
+from app.database.models.catalogos import (
+    CatModuloClinico, CatPrioridadAlerta, CatTipoAlerta, CatIps, CatEapb,
+    CatTipoExamen, CatTipoEcografia, CatEstadoNutricional, CatHemoclasificacion,
+    CatDiagnosticoCie10, CatVacuna, CatMicronutriente, CatTipoProfesional,
+    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad,
+    CatPertenenciaEtnica, CatGrupoPoblacional,
+)
+
+CATALOG_MAP: dict[str, type] = {
+    "modulo-clinico": CatModuloClinico,
+    "prioridad-alerta": CatPrioridadAlerta,
+    "tipo-alerta": CatTipoAlerta,
+    "ips": CatIps,
+    "eapb": CatEapb,
+    "tipo-examen": CatTipoExamen,
+    "tipo-ecografia": CatTipoEcografia,
+    "estado-nutricional": CatEstadoNutricional,
+    "hemoclasificacion": CatHemoclasificacion,
+    "diagnostico-cie10": CatDiagnosticoCie10,
+    "vacuna": CatVacuna,
+    "micronutriente": CatMicronutriente,
+    "tipo-profesional": CatTipoProfesional,
+    "especialidad": CatEspecialidad,
+    "metodo-anticonceptivo": CatMetodoAnticonceptivo,
+    "nacionalidad": CatNacionalidad,
+    "pertenencia-etnica": CatPertenenciaEtnica,
+    "grupo-poblacional": CatGrupoPoblacional,
+}
+
+
+async def list_catalog_items(db: AsyncSession, model: type, offset: int, limit: int) -> list:
+    result = await db.execute(
+        select(model).order_by(model.id).offset(offset).limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_catalog_item(db: AsyncSession, model: type, item_id: int) -> Any | None:
+    result = await db.execute(select(model).where(model.id == item_id))
+    return result.scalar_one_or_none()
+
+
+async def get_catalog_item_by_codigo(db: AsyncSession, model: type, codigo: str) -> Any | None:
+    if not hasattr(model, "codigo"):
+        return None
+    result = await db.execute(select(model).where(model.codigo == codigo))
+    return result.scalar_one_or_none()
+
+
+async def insert_catalog_item(db: AsyncSession, model: type, data: dict) -> Any:
+    cols = set(model.__table__.columns.keys())
+    filtered = {k: v for k, v in data.items() if k in cols}
+    item = model(**filtered)
+    db.add(item)
+    await db.flush()
+    await db.refresh(item)
+    return item
+
+
+async def edit_catalog_item(db: AsyncSession, model: type, item_id: int, data: dict) -> Any | None:
+    item = await get_catalog_item(db, model, item_id)
+    if item is None:
+        return None
+    cols = set(model.__table__.columns.keys())
+    for k, v in data.items():
+        if k in cols:
+            setattr(item, k, v)
+    await db.flush()
+    await db.refresh(item)
+    return item
+
+
+async def toggle_catalog_item_status(db: AsyncSession, model: type, item_id: int, activo: bool) -> Any | None:
+    item = await get_catalog_item(db, model, item_id)
+    if item is None:
+        return None
+    item.activo = activo
+    await db.flush()
+    await db.refresh(item)
+    return item

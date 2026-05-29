@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel
+from typing import Optional, Any
+from pydantic import BaseModel, model_validator
 
 
+# ---- 11.2 Carga Masiva Excel ----
 class CargaDetalleResponse(BaseModel):
     fila_numero: int
     hoja: str
@@ -29,3 +30,214 @@ class CargaExcelResponse(BaseModel):
 
 class CargaExcelDetalleResponse(CargaExcelResponse):
     detalles: list[CargaDetalleResponse] = []
+
+
+# ---- 11.1 Usuarios y Roles ----
+
+class RoleResponse(BaseModel):
+    id: int
+    nombre: str
+    descripcion: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreate(BaseModel):
+    email: str
+    nombre: str
+    rol_id: int
+    password: str
+
+
+class UserUpdate(BaseModel):
+    nombre: Optional[str] = None
+    rol_id: Optional[int] = None
+
+
+class UserStatusUpdate(BaseModel):
+    activo: bool
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    nombre: str
+    rol_id: int
+    activo: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---- 11.3 Catálogos ----
+
+class CatalogItemCreate(BaseModel):
+    codigo: Optional[str] = None
+    nombre: Optional[str] = None
+    grupo: Optional[str] = None
+    descripcion: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_name(self) -> "CatalogItemCreate":
+        if not self.nombre and not self.codigo and not self.grupo:
+            raise ValueError("Se requiere al menos uno de: nombre, codigo, grupo.")
+        return self
+
+class CatalogItemUpdate(BaseModel):
+    nombre: Optional[str] = None
+    grupo: Optional[str] = None
+    descripcion: Optional[str] = None
+
+class CatalogItemStatusUpdate(BaseModel):
+    activo: bool
+
+class CatalogItemResponse(BaseModel):
+    id: int
+    codigo: Optional[str] = None
+    nombre: Optional[str] = None
+    grupo: Optional[str] = None
+    descripcion: Optional[str] = None
+    activo: bool
+
+    class Config:
+        from_attributes = True
+
+
+# ---- 11.4 Contenido Educativo ----
+
+class EducationalCategoryCreate(BaseModel):
+    nombre: str
+    descripcion: Optional[str] = None
+
+class EducationalCategoryUpdate(BaseModel):
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+
+class EducationalCategoryResponse(BaseModel):
+    id: str
+    nombre: str
+    descripcion: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class EducationalContentCreate(BaseModel):
+    titulo: str
+    tipo: str # video, articulo, infografia
+    url: str
+    categoria_id: str
+    semana_gestacional_min: Optional[int] = None
+    semana_gestacional_max: Optional[int] = None
+
+class EducationalContentUpdate(BaseModel):
+    titulo: Optional[str] = None
+    tipo: Optional[str] = None
+    url: Optional[str] = None
+    categoria_id: Optional[str] = None
+    semana_gestacional_min: Optional[int] = None
+    semana_gestacional_max: Optional[int] = None
+
+class EducationalContentStatusUpdate(BaseModel):
+    activo: bool
+
+class EducationalContentResponse(BaseModel):
+    id: str
+    titulo: str
+    tipo: str
+    url: str
+    categoria_id: str
+    semana_gestacional_min: Optional[int] = None
+    semana_gestacional_max: Optional[int] = None
+    activo: bool
+
+    class Config:
+        from_attributes = True
+
+class ChecklistItemCreate(BaseModel):
+    texto: str
+    categoria: str
+
+class ChecklistItemUpdate(BaseModel):
+    texto: Optional[str] = None
+    categoria: Optional[str] = None
+
+class ChecklistItemStatusUpdate(BaseModel):
+    activo: bool
+
+class ChecklistItemResponse(BaseModel):
+    id: str
+    texto: str
+    categoria: str
+    activo: bool
+
+    class Config:
+        from_attributes = True
+
+
+# ---- 11.5 Preguntas de Seguimiento ----
+
+class FollowUpQuestionCreate(BaseModel):
+    texto: str
+    tipo: str # unica, multiple, abierta
+    modulo_id: Optional[int] = None
+
+class FollowUpQuestionUpdate(BaseModel):
+    texto: Optional[str] = None
+    tipo: Optional[str] = None
+    modulo_id: Optional[int] = None
+
+class FollowUpQuestionStatusUpdate(BaseModel):
+    activo: bool
+
+class FollowUpQuestionResponse(BaseModel):
+    id: str
+    texto: str
+    tipo: str
+    modulo_id: Optional[int] = None
+    activo: bool
+
+    class Config:
+        from_attributes = True
+
+class QuestionOptionCreate(BaseModel):
+    texto: str
+    valor: str
+    alerta: bool = False
+
+class QuestionOptionUpdate(BaseModel):
+    texto: Optional[str] = None
+    valor: Optional[str] = None
+    alerta: Optional[bool] = None
+
+class QuestionOptionResponse(BaseModel):
+    id: str
+    pregunta_id: str
+    texto: str
+    valor: str
+    alerta: bool
+
+    class Config:
+        from_attributes = True
+
+
+# ---- 11.6 Auditoría y Monitoreo ----
+
+class AuditLogResponse(BaseModel):
+    id: str
+    usuario_id: str
+    accion: str
+    entidad: str
+    entidad_id: Optional[str] = None
+    detalles: Optional[Any] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class SystemHealthResponse(BaseModel):
+    status: str
+    database: str
+    version: str
+    uptime: str
