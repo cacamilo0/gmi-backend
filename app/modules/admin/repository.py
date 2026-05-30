@@ -5,6 +5,8 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from typing import Any
+
 from app.database.models.gestante import Gestante
 from app.database.models.perfil import FormulaObstetrica
 from app.database.models.control import ControlPrenatal, SignosVitales
@@ -13,6 +15,11 @@ from app.database.models.complementarios import Vacunacion, RemisionInterdiscipl
 from app.database.models.desenlace import Parto, RecienNacido, AnticoncepcionPosparto
 from app.database.models.riesgo import ClasificacionRiesgo
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
+from app.database.models.catalogos import (CatModuloClinico, CatPrioridadAlerta, CatTipoAlerta, CatIps, CatEapb,
+    CatTipoExamen, CatTipoEcografia, CatEstadoNutricional, CatHemoclasificacion,
+    CatDiagnosticoCie10, CatVacuna, CatMicronutriente, CatTipoProfesional,
+    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad,
+    CatPertenenciaEtnica, CatGrupoPoblacional,)
 
 
 # gestante
@@ -314,15 +321,6 @@ async def get_rol_by_id(db: AsyncSession, rol_id: int) -> Rol | None:
 # CATÁLOGOS
 # =====================================================================
 
-from typing import Any
-from app.database.models.catalogos import (
-    CatModuloClinico, CatPrioridadAlerta, CatTipoAlerta, CatIps, CatEapb,
-    CatTipoExamen, CatTipoEcografia, CatEstadoNutricional, CatHemoclasificacion,
-    CatDiagnosticoCie10, CatVacuna, CatMicronutriente, CatTipoProfesional,
-    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad,
-    CatPertenenciaEtnica, CatGrupoPoblacional,
-)
-
 CATALOG_MAP: dict[str, type] = {
     "modulo-clinico": CatModuloClinico,
     "prioridad-alerta": CatPrioridadAlerta,
@@ -343,7 +341,6 @@ CATALOG_MAP: dict[str, type] = {
     "pertenencia-etnica": CatPertenenciaEtnica,
     "grupo-poblacional": CatGrupoPoblacional,
 }
-
 
 async def list_catalog_items(db: AsyncSession, model: type, offset: int, limit: int) -> list:
     result = await db.execute(
@@ -394,4 +391,4 @@ async def toggle_catalog_item_status(db: AsyncSession, model: type, item_id: int
     item.activo = activo
     await db.flush()
     await db.refresh(item)
-    return item
+    return item
