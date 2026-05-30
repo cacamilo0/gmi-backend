@@ -78,6 +78,20 @@ class CatalogItemCreate(BaseModel):
     nombre: Optional[str] = None
     grupo: Optional[str] = None
     descripcion: Optional[str] = None
+    # CatTipoExamen
+    unidad: Optional[str] = None
+    # CatVacuna
+    dosis_esperadas: Optional[int] = None
+    # CatModuloClinico
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    # CatPrioridadAlerta
+    color_hex: Optional[str] = None
+    requiere_accion_inmediata: Optional[bool] = None
+    # CatIps
+    nivel: Optional[int] = None
+    # CatEapb
+    regimen: Optional[str] = None
 
     @model_validator(mode="after")
     def require_at_least_one_name(self) -> "CatalogItemCreate":
@@ -86,9 +100,18 @@ class CatalogItemCreate(BaseModel):
         return self
 
 class CatalogItemUpdate(BaseModel):
+    codigo: Optional[str] = None
     nombre: Optional[str] = None
     grupo: Optional[str] = None
     descripcion: Optional[str] = None
+    unidad: Optional[str] = None
+    dosis_esperadas: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    color_hex: Optional[str] = None
+    requiere_accion_inmediata: Optional[bool] = None
+    nivel: Optional[int] = None
+    regimen: Optional[str] = None
 
 class CatalogItemStatusUpdate(BaseModel):
     activo: bool
@@ -100,6 +123,14 @@ class CatalogItemResponse(BaseModel):
     grupo: Optional[str] = None
     descripcion: Optional[str] = None
     activo: bool
+    unidad: Optional[str] = None
+    dosis_esperadas: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    color_hex: Optional[str] = None
+    requiere_accion_inmediata: Optional[bool] = None
+    nivel: Optional[int] = None
+    regimen: Optional[str] = None
 
     class Config:
         from_attributes = True
