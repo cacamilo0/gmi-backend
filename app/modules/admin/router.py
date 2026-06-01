@@ -67,14 +67,64 @@ async def list_roles(
 
 # ---- 11.2 Carga Masiva Excel ----
 
+#@router.post("/upload/gestantes", response_model=schemas.CargaExcelResponse, status_code=status.HTTP_201_CREATED)
+#async def upload_excel(
+#    file: UploadFile = File(...),
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Subir Excel (modo: validar_solo | procesar)"""
+#    return await service.upload_and_process(db, file, staff.id)
+
+#@router.get("/upload/gestantes/history", response_model=list[schemas.CargaExcelResponse])
+#async def list_cargas(
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Historial de cargas"""
+#    return await service.get_all_cargas(db)
+
+#@router.get("/upload/gestantes/template")
+#async def download_template(
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#):
+#    """Descargar plantilla Excel"""
+    # Placeholder for template download
+#    return service._not_implemented()
+
+#@router.get("/upload/gestantes/{cargaId}", response_model=schemas.CargaExcelResponse)
+#async def get_carga_status(
+#    cargaId: str,
+#    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+#):
+#    """Estado de carga"""
+#    carga, _ = await service.get_carga_with_details(db, cargaId)
+#    return carga
+
+#@router.get("/upload/gestantes/{cargaId}/detail", response_model=schemas.CargaExcelDetalleResponse)
+#async def get_carga_detail(
+#    cargaId: str,
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Detalle fila por fila"""
+#    carga, detalles = await service.get_carga_with_details(db, cargaId)
+#    return schemas.CargaExcelDetalleResponse(
+#        **schemas.CargaExcelResponse.model_validate(carga).model_dump(),
+#        detalles=[schemas.CargaDetalleResponse.model_validate(d) for d in detalles],
+#    )
+
+# ---- 11.2 Carga Masiva Excel ----
+
 @router.post("/upload/gestantes", response_model=schemas.CargaExcelResponse, status_code=status.HTTP_201_CREATED)
 async def upload_excel(
     file: UploadFile = File(...),
-    staff: UsuarioStaff = Depends(get_current_staff),
+    # staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Subir Excel (modo: validar_solo | procesar)"""
-    return await service.upload_and_process(db, file, staff.id)
+    # return await service.upload_and_process(db, file, staff.id)
+    return await service.upload_and_process(db, file, "a1b2c3d4-0000-0000-0000-000000000001")
 
 @router.get("/upload/gestantes/history", response_model=list[schemas.CargaExcelResponse])
 async def list_cargas(
@@ -94,7 +144,7 @@ async def download_template(
 @router.get("/upload/gestantes/{cargaId}", response_model=schemas.CargaExcelResponse)
 async def get_carga_status(
     cargaId: str,
-    staff: UsuarioStaff = Depends(get_current_staff),
+    # staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Estado de carga"""
@@ -114,7 +164,6 @@ async def get_carga_detail(
         detalles=[schemas.CargaDetalleResponse.model_validate(d) for d in detalles],
     )
 
-
 # ---- 11.3 Catálogos ----
 
 @router.get("/catalogs/{catalogName}", response_model=list[schemas.CatalogItemResponse])
@@ -122,12 +171,11 @@ async def list_catalog_items(
     catalogName: str,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    sort: str = "fecha_desc",
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Listar ítems"""
-    return await service.get_catalog_items(db, catalogName, page, size, sort)
+    return await service.get_catalog_items(db, catalogName, page, size)
 
 @router.post("/catalogs/{catalogName}", response_model=schemas.CatalogItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_catalog_item(
@@ -142,7 +190,7 @@ async def create_catalog_item(
 @router.put("/catalogs/{catalogName}/{id}", response_model=schemas.CatalogItemResponse)
 async def update_catalog_item(
     catalogName: str,
-    id: str,
+    id: int,
     request: schemas.CatalogItemUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -153,7 +201,7 @@ async def update_catalog_item(
 @router.patch("/catalogs/{catalogName}/{id}/status", response_model=schemas.CatalogItemResponse)
 async def update_catalog_item_status(
     catalogName: str,
-    id: str,
+    id: int,
     request: schemas.CatalogItemStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
