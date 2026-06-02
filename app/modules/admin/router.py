@@ -95,7 +95,7 @@ async def list_roles(
 #async def get_carga_status(
 #    cargaId: str,
 #    staff: UsuarioStaff = Depends(get_current_staff),
-    db: AsyncSession = Depends(get_db),
+#    db: AsyncSession = Depends(get_db),
 #):
 #    """Estado de carga"""
 #    carga, _ = await service.get_carga_with_details(db, cargaId)
