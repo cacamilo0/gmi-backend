@@ -234,7 +234,7 @@ async def create_educational_content(
 
 @router.put("/educational-content/{id}", response_model=schemas.EducationalContentResponse)
 async def update_educational_content(
-    id: str,
+    id: int,
     request: schemas.EducationalContentUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -244,7 +244,7 @@ async def update_educational_content(
 
 @router.patch("/educational-content/{id}/status", response_model=schemas.EducationalContentResponse)
 async def update_educational_content_status(
-    id: str,
+    id: int,
     request: schemas.EducationalContentStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -274,7 +274,7 @@ async def create_educational_category(
 
 @router.put("/educational-categories/{id}", response_model=schemas.EducationalCategoryResponse)
 async def update_educational_category(
-    id: str,
+    id: int,
     request: schemas.EducationalCategoryUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -304,7 +304,7 @@ async def create_checklist_item(
 
 @router.put("/checklist-items/{id}", response_model=schemas.ChecklistItemResponse)
 async def update_checklist_item(
-    id: str,
+    id: int,
     request: schemas.ChecklistItemUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -314,7 +314,7 @@ async def update_checklist_item(
 
 @router.patch("/checklist-items/{id}/status", response_model=schemas.ChecklistItemResponse)
 async def update_checklist_item_status(
-    id: str,
+    id: int,
     request: schemas.ChecklistItemStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
