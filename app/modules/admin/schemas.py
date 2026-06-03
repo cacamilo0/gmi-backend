@@ -141,66 +141,99 @@ class CatalogItemResponse(BaseModel):
 class EducationalCategoryCreate(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
+    orden: Optional[int] = None
 
 class EducationalCategoryUpdate(BaseModel):
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
+    orden: Optional[int] = None
 
 class EducationalCategoryResponse(BaseModel):
-    id: str
+    id: int
     nombre: str
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
+    orden: Optional[int] = None
+    activo: bool
 
     class Config:
         from_attributes = True
 
 class EducationalContentCreate(BaseModel):
+    categoria_id: Optional[int] = None
     titulo: str
-    tipo: str # video, articulo, infografia
-    url: str
-    categoria_id: str
-    semana_gestacional_min: Optional[int] = None
-    semana_gestacional_max: Optional[int] = None
+    descripcion: Optional[str] = None
+    tipo_contenido: Optional[str] = None
+    cuerpo_texto: Optional[str] = None
+    url_recurso: Optional[str] = None
+    url_imagen: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    duracion_minutos: Optional[int] = None
+    orden: Optional[int] = None
 
 class EducationalContentUpdate(BaseModel):
+    categoria_id: Optional[int] = None
     titulo: Optional[str] = None
-    tipo: Optional[str] = None
-    url: Optional[str] = None
-    categoria_id: Optional[str] = None
-    semana_gestacional_min: Optional[int] = None
-    semana_gestacional_max: Optional[int] = None
+    descripcion: Optional[str] = None
+    tipo_contenido: Optional[str] = None
+    cuerpo_texto: Optional[str] = None
+    url_recurso: Optional[str] = None
+    url_imagen: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    duracion_minutos: Optional[int] = None
+    orden: Optional[int] = None
 
 class EducationalContentStatusUpdate(BaseModel):
     activo: bool
 
 class EducationalContentResponse(BaseModel):
-    id: str
+    id: int
+    categoria_id: Optional[int] = None
     titulo: str
-    tipo: str
-    url: str
-    categoria_id: str
-    semana_gestacional_min: Optional[int] = None
-    semana_gestacional_max: Optional[int] = None
+    descripcion: Optional[str] = None
+    tipo_contenido: Optional[str] = None
+    cuerpo_texto: Optional[str] = None
+    url_recurso: Optional[str] = None
+    url_imagen: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    duracion_minutos: Optional[int] = None
+    orden: Optional[int] = None
     activo: bool
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 class ChecklistItemCreate(BaseModel):
     texto: str
-    categoria: str
+    modulo_id: Optional[int] = None
+    semana_eg: Optional[int] = None
+    orden: Optional[int] = None
 
 class ChecklistItemUpdate(BaseModel):
     texto: Optional[str] = None
-    categoria: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg: Optional[int] = None
+    orden: Optional[int] = None
 
 class ChecklistItemStatusUpdate(BaseModel):
     activo: bool
 
 class ChecklistItemResponse(BaseModel):
-    id: str
+    id: int
     texto: str
-    categoria: str
+    modulo_id: Optional[int] = None
+    semana_eg: Optional[int] = None
+    orden: Optional[int] = None
     activo: bool
 
     class Config:
@@ -210,44 +243,62 @@ class ChecklistItemResponse(BaseModel):
 # ---- 11.5 Preguntas de Seguimiento ----
 
 class FollowUpQuestionCreate(BaseModel):
-    texto: str
-    tipo: str # unica, multiple, abierta
+    texto_pregunta: str
+    tipo_respuesta: str
     modulo_id: Optional[int] = None
+    frecuencia: Optional[str] = None
+    es_signo_alarma: bool = False
+    prioridad_alerta_default_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class FollowUpQuestionUpdate(BaseModel):
-    texto: Optional[str] = None
-    tipo: Optional[str] = None
+    texto_pregunta: Optional[str] = None
+    tipo_respuesta: Optional[str] = None
     modulo_id: Optional[int] = None
+    frecuencia: Optional[str] = None
+    es_signo_alarma: Optional[bool] = None
+    prioridad_alerta_default_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class FollowUpQuestionStatusUpdate(BaseModel):
     activo: bool
 
 class FollowUpQuestionResponse(BaseModel):
-    id: str
-    texto: str
-    tipo: str
+    id: int
+    texto_pregunta: str
+    tipo_respuesta: str
     modulo_id: Optional[int] = None
+    frecuencia: Optional[str] = None
+    es_signo_alarma: bool
+    prioridad_alerta_default_id: Optional[int] = None
+    orden: Optional[int] = None
     activo: bool
 
     class Config:
         from_attributes = True
 
 class QuestionOptionCreate(BaseModel):
-    texto: str
-    valor: str
-    alerta: bool = False
+    texto_opcion: str
+    valor_numerico: Optional[int] = None
+    es_alarma: bool = False
+    prioridad_alerta_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class QuestionOptionUpdate(BaseModel):
-    texto: Optional[str] = None
-    valor: Optional[str] = None
-    alerta: Optional[bool] = None
+    texto_opcion: Optional[str] = None
+    valor_numerico: Optional[int] = None
+    es_alarma: Optional[bool] = None
+    prioridad_alerta_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class QuestionOptionResponse(BaseModel):
-    id: str
-    pregunta_id: str
-    texto: str
-    valor: str
-    alerta: bool
+    id: int
+    pregunta_id: int
+    texto_opcion: str
+    valor_numerico: Optional[int] = None
+    es_alarma: bool
+    prioridad_alerta_id: Optional[int] = None
+    orden: Optional[int] = None
 
     class Config:
         from_attributes = True
