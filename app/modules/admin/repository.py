@@ -13,6 +13,11 @@ from app.database.models.complementarios import Vacunacion, RemisionInterdiscipl
 from app.database.models.desenlace import Parto, RecienNacido, AnticoncepcionPosparto
 from app.database.models.riesgo import ClasificacionRiesgo
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
+from app.database.models.educacion import (
+    CatCategoriaEducativa,
+    ContenidoEducativo,
+    ChecklistItem,
+)
 
 
 # gestante
@@ -228,22 +233,246 @@ async def create_carga_detalles(
 
 
 # =====================================================================
-# STUBS PARA NUEVAS ENTIDADES DEL PANEL ADMIN
+# USUARIOS Y ROLES
 # =====================================================================
-# TODO: Implementar acceso a BD cuando los modelos SQLAlchemy estén listos:
-# 
-# -- Usuarios y Roles --
-# async def get_users(db: AsyncSession, skip, limit): ...
-# async def get_roles(db: AsyncSession, skip, limit): ...
-# 
-# -- Catálogos --
-# async def get_catalog_items(db: AsyncSession, catalog: str, skip, limit): ...
-# 
-# -- Contenido Educativo --
-# async def get_educational_content(db: AsyncSession, skip, limit): ...
-# 
-# -- Preguntas de Seguimiento --
-# async def get_follow_up_questions(db: AsyncSession, skip, limit): ...
-# 
-# -- Auditoría y Monitoreo --
-# async def get_audit_logs(db: AsyncSession, skip, limit): ...
+
+from app.database.models.auth import UsuarioStaff, Rol
+
+
+async def get_all_staff(db: AsyncSession, offset: int, limit: int) -> list[UsuarioStaff]:
+    result = await db.execute(
+        select(UsuarioStaff)
+        .order_by(UsuarioStaff.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_staff_by_id(db: AsyncSession, user_id: str) -> UsuarioStaff | None:
+    result = await db.execute(
+        select(UsuarioStaff).where(UsuarioStaff.id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_staff_by_email(db: AsyncSession, email: str) -> UsuarioStaff | None:
+    result = await db.execute(
+        select(UsuarioStaff).where(UsuarioStaff.email == email)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_staff(
+    db: AsyncSession, nombre: str, email: str, hashed_pw: str, rol_id: int
+) -> UsuarioStaff:
+    user = UsuarioStaff(nombre=nombre, email=email, hash_password=hashed_pw, rol_id=rol_id)
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def update_staff(
+    db: AsyncSession, user_id: str, nombre: str | None = None, rol_id: int | None = None
+) -> UsuarioStaff | None:
+    user = await get_staff_by_id(db, user_id)
+    if user is None:
+        return None
+    if nombre is not None:
+        user.nombre = nombre
+    if rol_id is not None:
+        user.rol_id = rol_id
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def set_staff_status(db: AsyncSession, user_id: str, activo: bool) -> UsuarioStaff | None:
+    user = await get_staff_by_id(db, user_id)
+    if user is None:
+        return None
+    user.activo = activo
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def get_all_roles(db: AsyncSession, offset: int, limit: int) -> list[Rol]:
+    result = await db.execute(
+        select(Rol)
+        .order_by(Rol.nombre)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_rol_by_id(db: AsyncSession, rol_id: int) -> Rol | None:
+    result = await db.execute(
+        select(Rol).where(Rol.id == rol_id)
+    )
+    return result.scalar_one_or_none()
+
+
+# =====================================================================
+# CONTENIDO EDUCATIVO — 11.4
+# =====================================================================
+
+async def get_all_educational_categories(
+    db: AsyncSession, offset: int, limit: int
+) -> list[CatCategoriaEducativa]:
+    result = await db.execute(
+        select(CatCategoriaEducativa)
+        .order_by(CatCategoriaEducativa.orden.asc().nulls_last(), CatCategoriaEducativa.nombre)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_educational_category_by_id(
+    db: AsyncSession, category_id: int
+) -> CatCategoriaEducativa | None:
+    result = await db.execute(
+        select(CatCategoriaEducativa).where(CatCategoriaEducativa.id == category_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_educational_category(
+    db: AsyncSession, **data
+) -> CatCategoriaEducativa:
+    obj = CatCategoriaEducativa(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_educational_category(
+    db: AsyncSession, category_id: int, **data
+) -> CatCategoriaEducativa | None:
+    obj = await get_educational_category_by_id(db, category_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def get_all_educational_contents(
+    db: AsyncSession, offset: int, limit: int
+) -> list[ContenidoEducativo]:
+    result = await db.execute(
+        select(ContenidoEducativo)
+        .order_by(ContenidoEducativo.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_educational_content_by_id(
+    db: AsyncSession, content_id: int
+) -> ContenidoEducativo | None:
+    result = await db.execute(
+        select(ContenidoEducativo).where(ContenidoEducativo.id == content_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_educational_content(
+    db: AsyncSession, **data
+) -> ContenidoEducativo:
+    obj = ContenidoEducativo(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_educational_content(
+    db: AsyncSession, content_id: int, **data
+) -> ContenidoEducativo | None:
+    obj = await get_educational_content_by_id(db, content_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def set_educational_content_status(
+    db: AsyncSession, content_id: int, activo: bool
+) -> ContenidoEducativo | None:
+    obj = await get_educational_content_by_id(db, content_id)
+    if obj is None:
+        return None
+    obj.activo = activo
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def get_all_checklist_items(
+    db: AsyncSession, offset: int, limit: int
+) -> list[ChecklistItem]:
+    result = await db.execute(
+        select(ChecklistItem)
+        .order_by(ChecklistItem.orden.asc().nulls_last(), ChecklistItem.texto)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_checklist_item_by_id(
+    db: AsyncSession, item_id: int
+) -> ChecklistItem | None:
+    result = await db.execute(
+        select(ChecklistItem).where(ChecklistItem.id == item_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_checklist_item(
+    db: AsyncSession, **data
+) -> ChecklistItem:
+    obj = ChecklistItem(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_checklist_item(
+    db: AsyncSession, item_id: int, **data
+) -> ChecklistItem | None:
+    obj = await get_checklist_item_by_id(db, item_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def set_checklist_item_status(
+    db: AsyncSession, item_id: int, activo: bool
+) -> ChecklistItem | None:
+    obj = await get_checklist_item_by_id(db, item_id)
+    if obj is None:
+        return None
+    obj.activo = activo
+    await db.flush()
+    await db.refresh(obj)
+    return obj

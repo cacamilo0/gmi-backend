@@ -9,7 +9,9 @@ from sqlalchemy import select
 
 from app.modules.admin.excel.processor import process_excel
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
-from app.modules.admin import schemas
+from app.modules.admin import schemas, repository
+from app.core.security import hash_password
+from app.core.exceptions import NotFoundException, ConflictException
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "gmi_uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -79,20 +81,48 @@ def _not_implemented():
 
 # ---- 11.1 Usuarios y Roles ----
 
-async def get_staff_users(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def get_staff_users(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc") -> list[schemas.UserResponse]:
+    offset = (page - 1) * size
+    users = await repository.get_all_staff(db, offset, size)
+    return [schemas.UserResponse.model_validate(u) for u in users]
 
-async def create_staff_user(db: AsyncSession, data: schemas.UserCreate):
-    _not_implemented()
 
-async def update_staff_user(db: AsyncSession, user_id: str, data: schemas.UserUpdate):
-    _not_implemented()
+async def create_staff_user(db: AsyncSession, data: schemas.UserCreate) -> schemas.UserResponse:
+    existing = await repository.get_staff_by_email(db, data.email)
+    if existing:
+        raise ConflictException("Ya existe un usuario con ese email.")
 
-async def update_staff_user_status(db: AsyncSession, user_id: str, data: schemas.UserStatusUpdate):
-    _not_implemented()
+    rol = await repository.get_rol_by_id(db, data.rol_id)
+    if rol is None:
+        raise NotFoundException("Rol no encontrado.")
 
-async def get_roles(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+    user = await repository.create_staff(db, data.nombre, data.email, hash_password(data.password), data.rol_id)
+    return schemas.UserResponse.model_validate(user)
+
+
+async def update_staff_user(db: AsyncSession, user_id: str, data: schemas.UserUpdate) -> schemas.UserResponse:
+    if data.rol_id is not None:
+        rol = await repository.get_rol_by_id(db, data.rol_id)
+        if rol is None:
+            raise NotFoundException("Rol no encontrado.")
+
+    user = await repository.update_staff(db, user_id, nombre=data.nombre, rol_id=data.rol_id)
+    if user is None:
+        raise NotFoundException("Usuario no encontrado.")
+    return schemas.UserResponse.model_validate(user)
+
+
+async def update_staff_user_status(db: AsyncSession, user_id: str, data: schemas.UserStatusUpdate) -> schemas.UserResponse:
+    user = await repository.set_staff_status(db, user_id, data.activo)
+    if user is None:
+        raise NotFoundException("Usuario no encontrado.")
+    return schemas.UserResponse.model_validate(user)
+
+
+async def get_roles(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc") -> list[schemas.RoleResponse]:
+    offset = (page - 1) * size
+    roles = await repository.get_all_roles(db, offset, size)
+    return [schemas.RoleResponse.model_validate(r) for r in roles]
 
 
 # ---- 11.3 Catálogos ----
@@ -112,38 +142,146 @@ async def update_catalog_item_status(db: AsyncSession, catalog_name: str, item_i
 
 # ---- 11.4 Contenido Educativo ----
 
-async def get_educational_contents(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def get_educational_categories(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.EducationalCategoryResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_educational_categories(db, offset, limit=size)
+    return [schemas.EducationalCategoryResponse.model_validate(c) for c in items]
 
-async def create_educational_content(db: AsyncSession, data: schemas.EducationalContentCreate):
-    _not_implemented()
 
-async def update_educational_content(db: AsyncSession, item_id: str, data: schemas.EducationalContentUpdate):
-    _not_implemented()
+async def create_educational_category(
+    db: AsyncSession, data: schemas.EducationalCategoryCreate
+) -> schemas.EducationalCategoryResponse:
+    obj = await repository.create_educational_category(
+        db,
+        nombre=data.nombre,
+        descripcion=data.descripcion,
+        icono=data.icono,
+        orden=data.orden,
+    )
+    return schemas.EducationalCategoryResponse.model_validate(obj)
 
-async def update_educational_content_status(db: AsyncSession, item_id: str, data: schemas.EducationalContentStatusUpdate):
-    _not_implemented()
 
-async def get_educational_categories(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def update_educational_category(
+    db: AsyncSession, item_id: int, data: schemas.EducationalCategoryUpdate
+) -> schemas.EducationalCategoryResponse:
+    obj = await repository.update_educational_category(
+        db, item_id,
+        nombre=data.nombre,
+        descripcion=data.descripcion,
+        icono=data.icono,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Categoría educativa no encontrada.")
+    return schemas.EducationalCategoryResponse.model_validate(obj)
 
-async def create_educational_category(db: AsyncSession, data: schemas.EducationalCategoryCreate):
-    _not_implemented()
 
-async def update_educational_category(db: AsyncSession, item_id: str, data: schemas.EducationalCategoryUpdate):
-    _not_implemented()
+async def get_educational_contents(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.EducationalContentResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_educational_contents(db, offset, limit=size)
+    return [schemas.EducationalContentResponse.model_validate(c) for c in items]
 
-async def get_checklist_items(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
 
-async def create_checklist_item(db: AsyncSession, data: schemas.ChecklistItemCreate):
-    _not_implemented()
+async def create_educational_content(
+    db: AsyncSession, data: schemas.EducationalContentCreate
+) -> schemas.EducationalContentResponse:
+    obj = await repository.create_educational_content(
+        db,
+        categoria_id=data.categoria_id,
+        titulo=data.titulo,
+        descripcion=data.descripcion,
+        tipo_contenido=data.tipo_contenido,
+        cuerpo_texto=data.cuerpo_texto,
+        url_recurso=data.url_recurso,
+        url_imagen=data.url_imagen,
+        modulo_id=data.modulo_id,
+        semana_eg_inicio=data.semana_eg_inicio,
+        semana_eg_fin=data.semana_eg_fin,
+        duracion_minutos=data.duracion_minutos,
+        orden=data.orden,
+    )
+    return schemas.EducationalContentResponse.model_validate(obj)
 
-async def update_checklist_item(db: AsyncSession, item_id: str, data: schemas.ChecklistItemUpdate):
-    _not_implemented()
 
-async def update_checklist_item_status(db: AsyncSession, item_id: str, data: schemas.ChecklistItemStatusUpdate):
-    _not_implemented()
+async def update_educational_content(
+    db: AsyncSession, item_id: int, data: schemas.EducationalContentUpdate
+) -> schemas.EducationalContentResponse:
+    obj = await repository.update_educational_content(
+        db, item_id,
+        categoria_id=data.categoria_id,
+        titulo=data.titulo,
+        descripcion=data.descripcion,
+        tipo_contenido=data.tipo_contenido,
+        cuerpo_texto=data.cuerpo_texto,
+        url_recurso=data.url_recurso,
+        url_imagen=data.url_imagen,
+        modulo_id=data.modulo_id,
+        semana_eg_inicio=data.semana_eg_inicio,
+        semana_eg_fin=data.semana_eg_fin,
+        duracion_minutos=data.duracion_minutos,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Contenido educativo no encontrado.")
+    return schemas.EducationalContentResponse.model_validate(obj)
+
+
+async def update_educational_content_status(
+    db: AsyncSession, item_id: int, data: schemas.EducationalContentStatusUpdate
+) -> schemas.EducationalContentResponse:
+    obj = await repository.set_educational_content_status(db, item_id, data.activo)
+    if obj is None:
+        raise NotFoundException("Contenido educativo no encontrado.")
+    return schemas.EducationalContentResponse.model_validate(obj)
+
+
+async def get_checklist_items(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.ChecklistItemResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_checklist_items(db, offset, limit=size)
+    return [schemas.ChecklistItemResponse.model_validate(c) for c in items]
+
+
+async def create_checklist_item(
+    db: AsyncSession, data: schemas.ChecklistItemCreate
+) -> schemas.ChecklistItemResponse:
+    obj = await repository.create_checklist_item(
+        db,
+        texto=data.texto,
+        modulo_id=data.modulo_id,
+        semana_eg=data.semana_eg,
+        orden=data.orden,
+    )
+    return schemas.ChecklistItemResponse.model_validate(obj)
+
+
+async def update_checklist_item(
+    db: AsyncSession, item_id: int, data: schemas.ChecklistItemUpdate
+) -> schemas.ChecklistItemResponse:
+    obj = await repository.update_checklist_item(
+        db, item_id,
+        texto=data.texto,
+        modulo_id=data.modulo_id,
+        semana_eg=data.semana_eg,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Ítem de checklist no encontrado.")
+    return schemas.ChecklistItemResponse.model_validate(obj)
+
+
+async def update_checklist_item_status(
+    db: AsyncSession, item_id: int, data: schemas.ChecklistItemStatusUpdate
+) -> schemas.ChecklistItemResponse:
+    obj = await repository.set_checklist_item_status(db, item_id, data.activo)
+    if obj is None:
+        raise NotFoundException("Ítem de checklist no encontrado.")
+    return schemas.ChecklistItemResponse.model_validate(obj)
 
 
 # ---- 11.5 Preguntas de Seguimiento ----

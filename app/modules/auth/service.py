@@ -53,17 +53,17 @@ async def login_staff(db: AsyncSession, email: str, password: str) -> TokenRespo
 
     await repository.update_staff_last_access(db, staff)
 
-    # el map es una solución temporal
-    # todo: cuando se tengan las relationships configuradas se hace un join al rol
-    role_map = {1: "gestante", 2: "clinico", 3: "admin", 4: "investigador"}
-    role = role_map.get(staff.rol_id, "clinico")
+    rol = await repository.get_rol_by_id(db, staff.rol_id)
 
-    token_data = {"sub": staff.id, "role": role}
+    if rol is None or not rol.activo:
+        raise UnauthorizedException("Cuenta desactivada")
+
+    token_data = {"sub": staff.id, "role": rol.nombre}
 
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),
-        role=role,
+        role=rol.nombre,
     )
 
 async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenResponse:
