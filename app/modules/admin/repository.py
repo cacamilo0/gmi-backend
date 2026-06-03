@@ -5,6 +5,8 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from typing import Any
+
 from app.database.models.gestante import Gestante
 from app.database.models.perfil import FormulaObstetrica
 from app.database.models.control import ControlPrenatal, SignosVitales
@@ -18,6 +20,11 @@ from app.database.models.educacion import (
     ContenidoEducativo,
     ChecklistItem,
 )
+from app.database.models.catalogos import (CatModuloClinico, CatPrioridadAlerta, CatTipoAlerta, CatIps, CatEapb,
+    CatTipoExamen, CatTipoEcografia, CatEstadoNutricional, CatHemoclasificacion,
+    CatDiagnosticoCie10, CatVacuna, CatMicronutriente, CatTipoProfesional,
+    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad,
+    CatPertenenciaEtnica, CatGrupoPoblacional,)
 
 
 # gestante
@@ -312,6 +319,85 @@ async def get_rol_by_id(db: AsyncSession, rol_id: int) -> Rol | None:
     result = await db.execute(
         select(Rol).where(Rol.id == rol_id)
     )
+    return result.scalar_one_or_none()
+
+
+# =====================================================================
+# CATÁLOGOS
+# =====================================================================
+
+CATALOG_MAP: dict[str, type] = {
+    "modulo-clinico": CatModuloClinico,
+    "prioridad-alerta": CatPrioridadAlerta,
+    "tipo-alerta": CatTipoAlerta,
+    "ips": CatIps,
+    "eapb": CatEapb,
+    "tipo-examen": CatTipoExamen,
+    "tipo-ecografia": CatTipoEcografia,
+    "estado-nutricional": CatEstadoNutricional,
+    "hemoclasificacion": CatHemoclasificacion,
+    "diagnostico-cie10": CatDiagnosticoCie10,
+    "vacuna": CatVacuna,
+    "micronutriente": CatMicronutriente,
+    "tipo-profesional": CatTipoProfesional,
+    "especialidad": CatEspecialidad,
+    "metodo-anticonceptivo": CatMetodoAnticonceptivo,
+    "nacionalidad": CatNacionalidad,
+    "pertenencia-etnica": CatPertenenciaEtnica,
+    "grupo-poblacional": CatGrupoPoblacional,
+}
+
+async def list_catalog_items(db: AsyncSession, model: type, offset: int, limit: int) -> list:
+    result = await db.execute(
+        select(model).order_by(model.id).offset(offset).limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_catalog_item(db: AsyncSession, model: type, item_id: int) -> Any | None:
+    result = await db.execute(select(model).where(model.id == item_id))
+    return result.scalar_one_or_none()
+
+
+async def get_catalog_item_by_codigo(db: AsyncSession, model: type, codigo: str) -> Any | None:
+    if not hasattr(model, "codigo"):
+        return None
+    result = await db.execute(select(model).where(model.codigo == codigo))
+    return result.scalar_one_or_none()
+
+
+async def insert_catalog_item(db: AsyncSession, model: type, data: dict) -> Any:
+    cols = set(model.__table__.columns.keys())
+    filtered = {k: v for k, v in data.items() if k in cols}
+    item = model(**filtered)
+    db.add(item)
+    await db.flush()
+    await db.refresh(item)
+    return item
+
+
+async def edit_catalog_item(db: AsyncSession, model: type, item_id: int, data: dict) -> Any | None:
+    item = await get_catalog_item(db, model, item_id)
+    if item is None:
+        return None
+    cols = set(model.__table__.columns.keys())
+    for k, v in data.items():
+        if k in cols:
+            setattr(item, k, v)
+    await db.flush()
+    await db.refresh(item)
+    return item
+
+
+async def toggle_catalog_item_status(db: AsyncSession, model: type, item_id: int, activo: bool) -> Any | None:
+    item = await get_catalog_item(db, model, item_id)
+    if item is None:
+        return None
+    item.activo = activo
+    await db.flush()
+    await db.refresh(item)
+    return item
+
     return result.scalar_one_or_none()
 
 
