@@ -3,17 +3,19 @@ Operaciones de escritura en BD para el pipeline de carga masiva.
 """
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from typing import Any
 
 from app.database.models.gestante import Gestante
+from app.database.models.auth import AuditLog
 from app.database.models.perfil import FormulaObstetrica
 from app.database.models.control import ControlPrenatal, SignosVitales
 from app.database.models.examenes import ExamenLaboratorio, Ecografia
 from app.database.models.complementarios import Vacunacion, RemisionInterdisciplinaria
 from app.database.models.desenlace import Parto, RecienNacido, AnticoncepcionPosparto
-from app.database.models.riesgo import ClasificacionRiesgo
+from app.database.models.riesgo import ClasificacionRiesgo, Alerta
+from app.database.models.seguimiento import PreguntaSeguimiento, RespuestaSeguimiento
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
 from app.database.models.educacion import (
     CatCategoriaEducativa,
@@ -561,4 +563,130 @@ async def set_checklist_item_status(
     obj.activo = activo
     await db.flush()
     await db.refresh(obj)
-    return obj
+    return obj
+
+
+# ---- 11.9 Gestantes ----
+
+async def get_all_gestantes_with_details(
+    db: AsyncSession, offset: int, limit: int
+) -> list[dict]:
+    result = await db.execute(
+        select(Gestante)
+        .order_by(Gestante.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    gestantes = result.scalars().all()
+    if not gestantes:
+        return []
+
+    ids = [g.id for g in gestantes]
+
+    # Last login from audit_log
+    q_al = select(
+        AuditLog.gestante_id,
+        func.max(AuditLog.created_at).label("ultimo_acceso")
+    ).where(
+        AuditLog.gestante_id.in_(ids),
+        AuditLog.accion == "login"
+    ).group_by(AuditLog.gestante_id)
+    acceso_map = {r.gestante_id: r.ultimo_acceso for r in (await db.execute(q_al)).all()}
+
+    # Latest respuesta_seguimiento + question text
+    latest_rs = (
+        select(
+            RespuestaSeguimiento.gestante_id,
+            RespuestaSeguimiento.pregunta_id,
+            RespuestaSeguimiento.created_at,
+            func.row_number().over(
+                partition_by=RespuestaSeguimiento.gestante_id,
+                order_by=RespuestaSeguimiento.created_at.desc()
+            ).label("rn")
+        )
+        .where(RespuestaSeguimiento.gestante_id.in_(ids))
+        .subquery()
+    )
+    q_rs = select(
+        latest_rs.c.gestante_id,
+        latest_rs.c.created_at,
+        PreguntaSeguimiento.texto_pregunta
+    ).join(
+        PreguntaSeguimiento, PreguntaSeguimiento.id == latest_rs.c.pregunta_id
+    ).where(latest_rs.c.rn == 1)
+    respuesta_map = {}
+    for r in (await db.execute(q_rs)).all():
+        respuesta_map[r.gestante_id] = (r.created_at, r.texto_pregunta)
+
+    # Latest alerta per gestante
+    latest_al = (
+        select(
+            Alerta.gestante_id,
+            Alerta.estado,
+            Alerta.prioridad_id,
+            func.row_number().over(
+                partition_by=Alerta.gestante_id,
+                order_by=Alerta.created_at.desc()
+            ).label("rn")
+        )
+        .where(Alerta.gestante_id.in_(ids))
+        .subquery()
+    )
+    q_alert = select(
+        latest_al.c.gestante_id,
+        latest_al.c.estado,
+        latest_al.c.prioridad_id
+    ).where(latest_al.c.rn == 1)
+    alerta_map = {}
+    for r in (await db.execute(q_alert)).all():
+        alerta_map[r.gestante_id] = (r.estado, r.prioridad_id)
+
+    # Latest clasificacion_riesgo per gestante
+    latest_cr = (
+        select(
+            ClasificacionRiesgo.gestante_id,
+            ClasificacionRiesgo.nivel,
+            ClasificacionRiesgo.clasificacion_ia,
+            func.row_number().over(
+                partition_by=ClasificacionRiesgo.gestante_id,
+                order_by=ClasificacionRiesgo.fecha_evaluacion.desc()
+            ).label("rn")
+        )
+        .where(ClasificacionRiesgo.gestante_id.in_(ids))
+        .subquery()
+    )
+    q_cr = select(
+        latest_cr.c.gestante_id,
+        latest_cr.c.nivel,
+        latest_cr.c.clasificacion_ia
+    ).where(latest_cr.c.rn == 1)
+    riesgo_map = {}
+    for r in (await db.execute(q_cr)).all():
+        riesgo_map[r.gestante_id] = (r.nivel, r.clasificacion_ia)
+
+    out = []
+    for g in gestantes:
+        acceso = acceso_map.get(g.id)
+        resp_data = respuesta_map.get(g.id)
+        alert_data = alerta_map.get(g.id)
+        riesgo_data = riesgo_map.get(g.id)
+        out.append({
+            "id": g.id,
+            "codigo_gmi": g.codigo_gmi,
+            "fecha_nacimiento": g.fecha_nacimiento,
+            "fecha_ultima_menstruacion": g.fecha_ultima_menstruacion,
+            "fecha_probable_parto": g.fecha_probable_parto,
+            "semanas_eg_ingreso": g.semanas_eg_ingreso,
+            "modulo_activo_id": g.modulo_activo_id,
+            "activa": g.activa,
+            "anio_ingreso": g.anio_ingreso,
+            "created_at": g.created_at,
+            "ultimo_acceso": acceso,
+            "ultima_pregunta_respondida": resp_data[1] if resp_data else None,
+            "ultima_respuesta_fecha": resp_data[0] if resp_data else None,
+            "ultimo_estado_alerta": alert_data[0] if alert_data else None,
+            "ultima_prioridad_alerta_id": alert_data[1] if alert_data else None,
+            "nivel_riesgo": riesgo_data[0] if riesgo_data else None,
+            "clasificacion_ia": riesgo_data[1] if riesgo_data else None,
+        })
+    return out
