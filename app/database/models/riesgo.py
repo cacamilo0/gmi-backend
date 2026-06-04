@@ -3,6 +3,10 @@ from datetime import datetime
 
 from sqlmodel import SQLModel, Field
 
+# Ensure FK target tables are registered in metadata
+import app.database.models.auth  # noqa: F401
+import app.database.models.catalogos  # noqa: F401
+
 
 class ClasificacionRiesgo(SQLModel, table=True):
     __tablename__ = "clasificacion_riesgo"

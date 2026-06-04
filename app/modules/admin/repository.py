@@ -3,17 +3,19 @@ Operaciones de escritura en BD para el pipeline de carga masiva.
 """
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from typing import Any
 
 from app.database.models.gestante import Gestante
+from app.database.models.auth import AuditLog
 from app.database.models.perfil import FormulaObstetrica
 from app.database.models.control import ControlPrenatal, SignosVitales
 from app.database.models.examenes import ExamenLaboratorio, Ecografia
 from app.database.models.complementarios import Vacunacion, RemisionInterdisciplinaria
 from app.database.models.desenlace import Parto, RecienNacido, AnticoncepcionPosparto
 from app.database.models.riesgo import ClasificacionRiesgo
+from app.database.models.seguimiento import PreguntaSeguimiento, OpcionPreguntaSeguimiento
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
 from app.database.models.educacion import (
     CatCategoriaEducativa,
@@ -561,4 +563,133 @@ async def set_checklist_item_status(
     obj.activo = activo
     await db.flush()
     await db.refresh(obj)
-    return obj
+    return obj
+
+
+# ---- 11.5 Preguntas de Seguimiento ----
+
+async def get_all_followup_questions(
+    db: AsyncSession, offset: int, limit: int
+) -> list[PreguntaSeguimiento]:
+    result = await db.execute(
+        select(PreguntaSeguimiento)
+        .order_by(PreguntaSeguimiento.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_followup_question_by_id(
+    db: AsyncSession, question_id: int
+) -> PreguntaSeguimiento | None:
+    result = await db.execute(
+        select(PreguntaSeguimiento).where(PreguntaSeguimiento.id == question_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_followup_question(
+    db: AsyncSession, **data
+) -> PreguntaSeguimiento:
+    obj = PreguntaSeguimiento(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_followup_question(
+    db: AsyncSession, question_id: int, **data
+) -> PreguntaSeguimiento | None:
+    obj = await get_followup_question_by_id(db, question_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def set_followup_question_status(
+    db: AsyncSession, question_id: int, activo: bool
+) -> PreguntaSeguimiento | None:
+    obj = await get_followup_question_by_id(db, question_id)
+    if obj is None:
+        return None
+    obj.activo = activo
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def get_options_by_question_id(
+    db: AsyncSession, question_id: int
+) -> list[OpcionPreguntaSeguimiento]:
+    result = await db.execute(
+        select(OpcionPreguntaSeguimiento)
+        .where(OpcionPreguntaSeguimiento.pregunta_id == question_id)
+        .order_by(OpcionPreguntaSeguimiento.orden.asc().nulls_last())
+    )
+    return result.scalars().all()
+
+
+async def get_option_by_id(
+    db: AsyncSession, option_id: int
+) -> OpcionPreguntaSeguimiento | None:
+    result = await db.execute(
+        select(OpcionPreguntaSeguimiento).where(OpcionPreguntaSeguimiento.id == option_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_option(
+    db: AsyncSession, **data
+) -> OpcionPreguntaSeguimiento:
+    obj = OpcionPreguntaSeguimiento(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_option(
+    db: AsyncSession, option_id: int, **data
+) -> OpcionPreguntaSeguimiento | None:
+    obj = await get_option_by_id(db, option_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def delete_option(
+    db: AsyncSession, option_id: int
+) -> bool:
+    obj = await get_option_by_id(db, option_id)
+    if obj is None:
+        return False
+    await db.delete(obj)
+    await db.flush()
+    return True
+
+
+# ---- 11.6 Auditoría y Monitoreo ----
+
+async def get_all_audit_logs(
+    db: AsyncSession, offset: int, limit: int, sort: str = "fecha_desc"
+) -> list[AuditLog]:
+    order = AuditLog.created_at.desc() if sort == "fecha_desc" else AuditLog.created_at.asc()
+    result = await db.execute(
+        select(AuditLog)
+        .order_by(order)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()

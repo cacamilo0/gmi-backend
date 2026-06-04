@@ -1,5 +1,7 @@
 from typing import Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, File, UploadFile, status, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
@@ -347,7 +349,7 @@ async def create_follow_up_question(
 
 @router.put("/follow-up-questions/{id}", response_model=schemas.FollowUpQuestionResponse)
 async def update_follow_up_question(
-    id: str,
+    id: int,
     request: schemas.FollowUpQuestionUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -357,7 +359,7 @@ async def update_follow_up_question(
 
 @router.patch("/follow-up-questions/{id}/status", response_model=schemas.FollowUpQuestionResponse)
 async def update_follow_up_question_status(
-    id: str,
+    id: int,
     request: schemas.FollowUpQuestionStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -367,7 +369,7 @@ async def update_follow_up_question_status(
 
 @router.get("/follow-up-questions/{id}/options", response_model=list[schemas.QuestionOptionResponse])
 async def list_question_options(
-    id: str,
+    id: int,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
@@ -376,7 +378,7 @@ async def list_question_options(
 
 @router.post("/follow-up-questions/{id}/options", response_model=schemas.QuestionOptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_question_option(
-    id: str,
+    id: int,
     request: schemas.QuestionOptionCreate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -386,7 +388,7 @@ async def create_question_option(
 
 @router.put("/follow-up-questions/options/{optionId}", response_model=schemas.QuestionOptionResponse)
 async def update_question_option(
-    optionId: str,
+    optionId: int,
     request: schemas.QuestionOptionUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -396,7 +398,7 @@ async def update_question_option(
 
 @router.delete("/follow-up-questions/options/{optionId}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_question_option(
-    optionId: str,
+    optionId: int,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
@@ -435,7 +437,14 @@ async def export_gestantes(
     db: AsyncSession = Depends(get_db),
 ):
     """Exportar gestantes"""
-    return await service.export_gestantes(db, format)
+    data = await service.export_gestantes(db, format)
+    media = "text/csv; charset=utf-8-sig" if format == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ext = "csv" if format == "csv" else "xlsx"
+    return StreamingResponse(
+        iter([data]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="gestantes_{datetime.utcnow().strftime("%Y%m%d")}.{ext}"'},
+    )
 
 @router.get("/export/indicators")
 async def export_indicators(
@@ -444,4 +453,11 @@ async def export_indicators(
     db: AsyncSession = Depends(get_db),
 ):
     """Exportar indicadores"""
-    return await service.export_indicators(db, format)
+    data = await service.export_indicators(db, format)
+    media = "text/csv; charset=utf-8-sig" if format == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ext = "csv" if format == "csv" else "xlsx"
+    return StreamingResponse(
+        iter([data]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="indicadores_{datetime.utcnow().strftime("%Y%m%d")}.{ext}"'},
+    )
