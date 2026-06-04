@@ -308,11 +308,13 @@ class QuestionOptionResponse(BaseModel):
 
 class AuditLogResponse(BaseModel):
     id: str
-    usuario_id: str
+    usuario_id: Optional[str] = None
+    gestante_id: Optional[str] = None
     accion: str
-    entidad: str
-    entidad_id: Optional[str] = None
-    detalles: Optional[Any] = None
+    tabla_afectada: str
+    registro_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    detalle: Optional[Any] = None
     created_at: datetime
 
     class Config:
