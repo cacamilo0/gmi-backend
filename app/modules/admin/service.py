@@ -327,6 +327,16 @@ async def update_checklist_item_status(
     return schemas.ChecklistItemResponse.model_validate(obj)
 
 
+# ---- 11.9 Gestantes ----
+
+async def get_gestantes(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.GestanteListResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_gestantes_with_details(db, offset, size)
+    return [schemas.GestanteListResponse.model_validate(item) for item in items]
+
+
 # ---- 11.5 Preguntas de Seguimiento ----
 
 async def get_follow_up_questions(

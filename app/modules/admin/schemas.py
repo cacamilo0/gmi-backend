@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Any
 from pydantic import BaseModel, model_validator
 
@@ -325,3 +325,28 @@ class SystemHealthResponse(BaseModel):
     database: str
     version: str
     uptime: str
+
+
+# ---- 11.9 Gestantes ----
+
+class GestanteListResponse(BaseModel):
+    id: str
+    codigo_gmi: str
+    fecha_nacimiento: date
+    fecha_ultima_menstruacion: date
+    fecha_probable_parto: Optional[date] = None
+    semanas_eg_ingreso: Optional[int] = None
+    modulo_activo_id: Optional[int] = None
+    activa: bool
+    anio_ingreso: int
+    created_at: Optional[datetime] = None
+    ultimo_acceso: Optional[datetime] = None
+    ultima_pregunta_respondida: Optional[str] = None
+    ultima_respuesta_fecha: Optional[datetime] = None
+    ultimo_estado_alerta: Optional[str] = None
+    ultima_prioridad_alerta_id: Optional[int] = None
+    nivel_riesgo: Optional[str] = None
+    clasificacion_ia: Optional[str] = None
+
+    class Config:
+        from_attributes = True
