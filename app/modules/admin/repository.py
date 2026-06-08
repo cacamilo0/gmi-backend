@@ -3,16 +3,30 @@ Operaciones de escritura en BD para el pipeline de carga masiva.
 """
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+
+from typing import Any
 
 from app.database.models.gestante import Gestante
+from app.database.models.auth import AuditLog
 from app.database.models.perfil import FormulaObstetrica
 from app.database.models.control import ControlPrenatal, SignosVitales
 from app.database.models.examenes import ExamenLaboratorio, Ecografia
 from app.database.models.complementarios import Vacunacion, RemisionInterdisciplinaria
 from app.database.models.desenlace import Parto, RecienNacido, AnticoncepcionPosparto
-from app.database.models.riesgo import ClasificacionRiesgo
+from app.database.models.riesgo import ClasificacionRiesgo, Alerta
+from app.database.models.seguimiento import PreguntaSeguimiento, OpcionPreguntaSeguimiento, RespuestaSeguimiento
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
+from app.database.models.educacion import (
+    CatCategoriaEducativa,
+    ContenidoEducativo,
+    ChecklistItem,
+)
+from app.database.models.catalogos import (CatModuloClinico, CatPrioridadAlerta, CatTipoAlerta, CatIps, CatEapb,
+    CatTipoExamen, CatTipoEcografia, CatEstadoNutricional, CatHemoclasificacion,
+    CatDiagnosticoCie10, CatVacuna, CatMicronutriente, CatTipoProfesional,
+    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad,
+    CatPertenenciaEtnica, CatGrupoPoblacional,)
 
 
 # gestante
@@ -314,15 +328,6 @@ async def get_rol_by_id(db: AsyncSession, rol_id: int) -> Rol | None:
 # CATÁLOGOS
 # =====================================================================
 
-from typing import Any
-from app.database.models.catalogos import (
-    CatModuloClinico, CatPrioridadAlerta, CatTipoAlerta, CatIps, CatEapb,
-    CatTipoExamen, CatTipoEcografia, CatEstadoNutricional, CatHemoclasificacion,
-    CatDiagnosticoCie10, CatVacuna, CatMicronutriente, CatTipoProfesional,
-    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad,
-    CatPertenenciaEtnica, CatGrupoPoblacional,
-)
-
 CATALOG_MAP: dict[str, type] = {
     "modulo-clinico": CatModuloClinico,
     "prioridad-alerta": CatPrioridadAlerta,
@@ -343,7 +348,6 @@ CATALOG_MAP: dict[str, type] = {
     "pertenencia-etnica": CatPertenenciaEtnica,
     "grupo-poblacional": CatGrupoPoblacional,
 }
-
 
 async def list_catalog_items(db: AsyncSession, model: type, offset: int, limit: int) -> list:
     result = await db.execute(
@@ -394,4 +398,426 @@ async def toggle_catalog_item_status(db: AsyncSession, model: type, item_id: int
     item.activo = activo
     await db.flush()
     await db.refresh(item)
-    return item
+    return item
+
+    return result.scalar_one_or_none()
+
+
+# =====================================================================
+# CONTENIDO EDUCATIVO — 11.4
+# =====================================================================
+
+async def get_all_educational_categories(
+    db: AsyncSession, offset: int, limit: int
+) -> list[CatCategoriaEducativa]:
+    result = await db.execute(
+        select(CatCategoriaEducativa)
+        .order_by(CatCategoriaEducativa.orden.asc().nulls_last(), CatCategoriaEducativa.nombre)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_educational_category_by_id(
+    db: AsyncSession, category_id: int
+) -> CatCategoriaEducativa | None:
+    result = await db.execute(
+        select(CatCategoriaEducativa).where(CatCategoriaEducativa.id == category_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_educational_category(
+    db: AsyncSession, **data
+) -> CatCategoriaEducativa:
+    obj = CatCategoriaEducativa(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_educational_category(
+    db: AsyncSession, category_id: int, **data
+) -> CatCategoriaEducativa | None:
+    obj = await get_educational_category_by_id(db, category_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def get_all_educational_contents(
+    db: AsyncSession, offset: int, limit: int
+) -> list[ContenidoEducativo]:
+    result = await db.execute(
+        select(ContenidoEducativo)
+        .order_by(ContenidoEducativo.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_educational_content_by_id(
+    db: AsyncSession, content_id: int
+) -> ContenidoEducativo | None:
+    result = await db.execute(
+        select(ContenidoEducativo).where(ContenidoEducativo.id == content_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_educational_content(
+    db: AsyncSession, **data
+) -> ContenidoEducativo:
+    obj = ContenidoEducativo(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_educational_content(
+    db: AsyncSession, content_id: int, **data
+) -> ContenidoEducativo | None:
+    obj = await get_educational_content_by_id(db, content_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def set_educational_content_status(
+    db: AsyncSession, content_id: int, activo: bool
+) -> ContenidoEducativo | None:
+    obj = await get_educational_content_by_id(db, content_id)
+    if obj is None:
+        return None
+    obj.activo = activo
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def get_all_checklist_items(
+    db: AsyncSession, offset: int, limit: int
+) -> list[ChecklistItem]:
+    result = await db.execute(
+        select(ChecklistItem)
+        .order_by(ChecklistItem.orden.asc().nulls_last(), ChecklistItem.texto)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_checklist_item_by_id(
+    db: AsyncSession, item_id: int
+) -> ChecklistItem | None:
+    result = await db.execute(
+        select(ChecklistItem).where(ChecklistItem.id == item_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_checklist_item(
+    db: AsyncSession, **data
+) -> ChecklistItem:
+    obj = ChecklistItem(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_checklist_item(
+    db: AsyncSession, item_id: int, **data
+) -> ChecklistItem | None:
+    obj = await get_checklist_item_by_id(db, item_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def set_checklist_item_status(
+    db: AsyncSession, item_id: int, activo: bool
+) -> ChecklistItem | None:
+    obj = await get_checklist_item_by_id(db, item_id)
+    if obj is None:
+        return None
+    obj.activo = activo
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+# ---- 11.5 Preguntas de Seguimiento ----
+
+async def get_all_followup_questions(
+    db: AsyncSession, offset: int, limit: int
+) -> list[PreguntaSeguimiento]:
+    result = await db.execute(
+        select(PreguntaSeguimiento)
+        .order_by(PreguntaSeguimiento.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_followup_question_by_id(
+    db: AsyncSession, question_id: int
+) -> PreguntaSeguimiento | None:
+    result = await db.execute(
+        select(PreguntaSeguimiento).where(PreguntaSeguimiento.id == question_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_followup_question(
+    db: AsyncSession, **data
+) -> PreguntaSeguimiento:
+    obj = PreguntaSeguimiento(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_followup_question(
+    db: AsyncSession, question_id: int, **data
+) -> PreguntaSeguimiento | None:
+    obj = await get_followup_question_by_id(db, question_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def set_followup_question_status(
+    db: AsyncSession, question_id: int, activo: bool
+) -> PreguntaSeguimiento | None:
+    obj = await get_followup_question_by_id(db, question_id)
+    if obj is None:
+        return None
+    obj.activo = activo
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def get_options_by_question_id(
+    db: AsyncSession, question_id: int
+) -> list[OpcionPreguntaSeguimiento]:
+    result = await db.execute(
+        select(OpcionPreguntaSeguimiento)
+        .where(OpcionPreguntaSeguimiento.pregunta_id == question_id)
+        .order_by(OpcionPreguntaSeguimiento.orden.asc().nulls_last())
+    )
+    return result.scalars().all()
+
+
+async def get_option_by_id(
+    db: AsyncSession, option_id: int
+) -> OpcionPreguntaSeguimiento | None:
+    result = await db.execute(
+        select(OpcionPreguntaSeguimiento).where(OpcionPreguntaSeguimiento.id == option_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_option(
+    db: AsyncSession, **data
+) -> OpcionPreguntaSeguimiento:
+    obj = OpcionPreguntaSeguimiento(**data)
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_option(
+    db: AsyncSession, option_id: int, **data
+) -> OpcionPreguntaSeguimiento | None:
+    obj = await get_option_by_id(db, option_id)
+    if obj is None:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(obj, k, v)
+    await db.flush()
+    await db.refresh(obj)
+    return obj
+
+
+async def delete_option(
+    db: AsyncSession, option_id: int
+) -> bool:
+    obj = await get_option_by_id(db, option_id)
+    if obj is None:
+        return False
+    await db.delete(obj)
+    await db.flush()
+    return True
+
+
+# ---- 11.6 Auditoría y Monitoreo ----
+
+async def get_all_audit_logs(
+    db: AsyncSession, offset: int, limit: int, sort: str = "fecha_desc"
+) -> list[AuditLog]:
+    order = AuditLog.created_at.desc() if sort == "fecha_desc" else AuditLog.created_at.asc()
+    result = await db.execute(
+        select(AuditLog)
+        .order_by(order)
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+    return obj
+
+
+# ---- 11.9 Gestantes ----
+
+async def get_all_gestantes_with_details(
+    db: AsyncSession, offset: int, limit: int
+) -> list[dict]:
+    result = await db.execute(
+        select(Gestante)
+        .order_by(Gestante.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    gestantes = result.scalars().all()
+    if not gestantes:
+        return []
+
+    ids = [g.id for g in gestantes]
+
+    # Last login from audit_log
+    q_al = select(
+        AuditLog.gestante_id,
+        func.max(AuditLog.created_at).label("ultimo_acceso")
+    ).where(
+        AuditLog.gestante_id.in_(ids),
+        AuditLog.accion == "login"
+    ).group_by(AuditLog.gestante_id)
+    acceso_map = {r.gestante_id: r.ultimo_acceso for r in (await db.execute(q_al)).all()}
+
+    # Latest respuesta_seguimiento + question text
+    latest_rs = (
+        select(
+            RespuestaSeguimiento.gestante_id,
+            RespuestaSeguimiento.pregunta_id,
+            RespuestaSeguimiento.created_at,
+            func.row_number().over(
+                partition_by=RespuestaSeguimiento.gestante_id,
+                order_by=RespuestaSeguimiento.created_at.desc()
+            ).label("rn")
+        )
+        .where(RespuestaSeguimiento.gestante_id.in_(ids))
+        .subquery()
+    )
+    q_rs = select(
+        latest_rs.c.gestante_id,
+        latest_rs.c.created_at,
+        PreguntaSeguimiento.texto_pregunta
+    ).join(
+        PreguntaSeguimiento, PreguntaSeguimiento.id == latest_rs.c.pregunta_id
+    ).where(latest_rs.c.rn == 1)
+    respuesta_map = {}
+    for r in (await db.execute(q_rs)).all():
+        respuesta_map[r.gestante_id] = (r.created_at, r.texto_pregunta)
+
+    # Latest alerta per gestante
+    latest_al = (
+        select(
+            Alerta.gestante_id,
+            Alerta.estado,
+            Alerta.prioridad_id,
+            func.row_number().over(
+                partition_by=Alerta.gestante_id,
+                order_by=Alerta.created_at.desc()
+            ).label("rn")
+        )
+        .where(Alerta.gestante_id.in_(ids))
+        .subquery()
+    )
+    q_alert = select(
+        latest_al.c.gestante_id,
+        latest_al.c.estado,
+        latest_al.c.prioridad_id
+    ).where(latest_al.c.rn == 1)
+    alerta_map = {}
+    for r in (await db.execute(q_alert)).all():
+        alerta_map[r.gestante_id] = (r.estado, r.prioridad_id)
+
+    # Latest clasificacion_riesgo per gestante
+    latest_cr = (
+        select(
+            ClasificacionRiesgo.gestante_id,
+            ClasificacionRiesgo.nivel,
+            ClasificacionRiesgo.clasificacion_ia,
+            func.row_number().over(
+                partition_by=ClasificacionRiesgo.gestante_id,
+                order_by=ClasificacionRiesgo.fecha_evaluacion.desc()
+            ).label("rn")
+        )
+        .where(ClasificacionRiesgo.gestante_id.in_(ids))
+        .subquery()
+    )
+    q_cr = select(
+        latest_cr.c.gestante_id,
+        latest_cr.c.nivel,
+        latest_cr.c.clasificacion_ia
+    ).where(latest_cr.c.rn == 1)
+    riesgo_map = {}
+    for r in (await db.execute(q_cr)).all():
+        riesgo_map[r.gestante_id] = (r.nivel, r.clasificacion_ia)
+
+    out = []
+    for g in gestantes:
+        acceso = acceso_map.get(g.id)
+        resp_data = respuesta_map.get(g.id)
+        alert_data = alerta_map.get(g.id)
+        riesgo_data = riesgo_map.get(g.id)
+        out.append({
+            "id": g.id,
+            "codigo_gmi": g.codigo_gmi,
+            "fecha_nacimiento": g.fecha_nacimiento,
+            "fecha_ultima_menstruacion": g.fecha_ultima_menstruacion,
+            "fecha_probable_parto": g.fecha_probable_parto,
+            "semanas_eg_ingreso": g.semanas_eg_ingreso,
+            "modulo_activo_id": g.modulo_activo_id,
+            "activa": g.activa,
+            "anio_ingreso": g.anio_ingreso,
+            "created_at": g.created_at,
+            "ultimo_acceso": acceso,
+            "ultima_pregunta_respondida": resp_data[1] if resp_data else None,
+            "ultima_respuesta_fecha": resp_data[0] if resp_data else None,
+            "ultimo_estado_alerta": alert_data[0] if alert_data else None,
+            "ultima_prioridad_alerta_id": alert_data[1] if alert_data else None,
+            "nivel_riesgo": riesgo_data[0] if riesgo_data else None,
+            "clasificacion_ia": riesgo_data[1] if riesgo_data else None,
+        })
+    return out

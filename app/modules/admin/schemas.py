@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Any
 from pydantic import BaseModel, model_validator
 
@@ -78,6 +78,20 @@ class CatalogItemCreate(BaseModel):
     nombre: Optional[str] = None
     grupo: Optional[str] = None
     descripcion: Optional[str] = None
+    # CatTipoExamen
+    unidad: Optional[str] = None
+    # CatVacuna
+    dosis_esperadas: Optional[int] = None
+    # CatModuloClinico
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    # CatPrioridadAlerta
+    color_hex: Optional[str] = None
+    requiere_accion_inmediata: Optional[bool] = None
+    # CatIps
+    nivel: Optional[int] = None
+    # CatEapb
+    regimen: Optional[str] = None
 
     @model_validator(mode="after")
     def require_at_least_one_name(self) -> "CatalogItemCreate":
@@ -86,9 +100,18 @@ class CatalogItemCreate(BaseModel):
         return self
 
 class CatalogItemUpdate(BaseModel):
+    codigo: Optional[str] = None
     nombre: Optional[str] = None
     grupo: Optional[str] = None
     descripcion: Optional[str] = None
+    unidad: Optional[str] = None
+    dosis_esperadas: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    color_hex: Optional[str] = None
+    requiere_accion_inmediata: Optional[bool] = None
+    nivel: Optional[int] = None
+    regimen: Optional[str] = None
 
 class CatalogItemStatusUpdate(BaseModel):
     activo: bool
@@ -100,6 +123,14 @@ class CatalogItemResponse(BaseModel):
     grupo: Optional[str] = None
     descripcion: Optional[str] = None
     activo: bool
+    unidad: Optional[str] = None
+    dosis_esperadas: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    color_hex: Optional[str] = None
+    requiere_accion_inmediata: Optional[bool] = None
+    nivel: Optional[int] = None
+    regimen: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -110,66 +141,99 @@ class CatalogItemResponse(BaseModel):
 class EducationalCategoryCreate(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
+    orden: Optional[int] = None
 
 class EducationalCategoryUpdate(BaseModel):
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
+    orden: Optional[int] = None
 
 class EducationalCategoryResponse(BaseModel):
-    id: str
+    id: int
     nombre: str
     descripcion: Optional[str] = None
+    icono: Optional[str] = None
+    orden: Optional[int] = None
+    activo: bool
 
     class Config:
         from_attributes = True
 
 class EducationalContentCreate(BaseModel):
+    categoria_id: Optional[int] = None
     titulo: str
-    tipo: str # video, articulo, infografia
-    url: str
-    categoria_id: str
-    semana_gestacional_min: Optional[int] = None
-    semana_gestacional_max: Optional[int] = None
+    descripcion: Optional[str] = None
+    tipo_contenido: Optional[str] = None
+    cuerpo_texto: Optional[str] = None
+    url_recurso: Optional[str] = None
+    url_imagen: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    duracion_minutos: Optional[int] = None
+    orden: Optional[int] = None
 
 class EducationalContentUpdate(BaseModel):
+    categoria_id: Optional[int] = None
     titulo: Optional[str] = None
-    tipo: Optional[str] = None
-    url: Optional[str] = None
-    categoria_id: Optional[str] = None
-    semana_gestacional_min: Optional[int] = None
-    semana_gestacional_max: Optional[int] = None
+    descripcion: Optional[str] = None
+    tipo_contenido: Optional[str] = None
+    cuerpo_texto: Optional[str] = None
+    url_recurso: Optional[str] = None
+    url_imagen: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    duracion_minutos: Optional[int] = None
+    orden: Optional[int] = None
 
 class EducationalContentStatusUpdate(BaseModel):
     activo: bool
 
 class EducationalContentResponse(BaseModel):
-    id: str
+    id: int
+    categoria_id: Optional[int] = None
     titulo: str
-    tipo: str
-    url: str
-    categoria_id: str
-    semana_gestacional_min: Optional[int] = None
-    semana_gestacional_max: Optional[int] = None
+    descripcion: Optional[str] = None
+    tipo_contenido: Optional[str] = None
+    cuerpo_texto: Optional[str] = None
+    url_recurso: Optional[str] = None
+    url_imagen: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg_inicio: Optional[int] = None
+    semana_eg_fin: Optional[int] = None
+    duracion_minutos: Optional[int] = None
+    orden: Optional[int] = None
     activo: bool
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 class ChecklistItemCreate(BaseModel):
     texto: str
-    categoria: str
+    modulo_id: Optional[int] = None
+    semana_eg: Optional[int] = None
+    orden: Optional[int] = None
 
 class ChecklistItemUpdate(BaseModel):
     texto: Optional[str] = None
-    categoria: Optional[str] = None
+    modulo_id: Optional[int] = None
+    semana_eg: Optional[int] = None
+    orden: Optional[int] = None
 
 class ChecklistItemStatusUpdate(BaseModel):
     activo: bool
 
 class ChecklistItemResponse(BaseModel):
-    id: str
+    id: int
     texto: str
-    categoria: str
+    modulo_id: Optional[int] = None
+    semana_eg: Optional[int] = None
+    orden: Optional[int] = None
     activo: bool
 
     class Config:
@@ -179,44 +243,62 @@ class ChecklistItemResponse(BaseModel):
 # ---- 11.5 Preguntas de Seguimiento ----
 
 class FollowUpQuestionCreate(BaseModel):
-    texto: str
-    tipo: str # unica, multiple, abierta
+    texto_pregunta: str
+    tipo_respuesta: str
     modulo_id: Optional[int] = None
+    frecuencia: Optional[str] = None
+    es_signo_alarma: bool = False
+    prioridad_alerta_default_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class FollowUpQuestionUpdate(BaseModel):
-    texto: Optional[str] = None
-    tipo: Optional[str] = None
+    texto_pregunta: Optional[str] = None
+    tipo_respuesta: Optional[str] = None
     modulo_id: Optional[int] = None
+    frecuencia: Optional[str] = None
+    es_signo_alarma: Optional[bool] = None
+    prioridad_alerta_default_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class FollowUpQuestionStatusUpdate(BaseModel):
     activo: bool
 
 class FollowUpQuestionResponse(BaseModel):
-    id: str
-    texto: str
-    tipo: str
+    id: int
+    texto_pregunta: str
+    tipo_respuesta: str
     modulo_id: Optional[int] = None
+    frecuencia: Optional[str] = None
+    es_signo_alarma: bool
+    prioridad_alerta_default_id: Optional[int] = None
+    orden: Optional[int] = None
     activo: bool
 
     class Config:
         from_attributes = True
 
 class QuestionOptionCreate(BaseModel):
-    texto: str
-    valor: str
-    alerta: bool = False
+    texto_opcion: str
+    valor_numerico: Optional[int] = None
+    es_alarma: bool = False
+    prioridad_alerta_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class QuestionOptionUpdate(BaseModel):
-    texto: Optional[str] = None
-    valor: Optional[str] = None
-    alerta: Optional[bool] = None
+    texto_opcion: Optional[str] = None
+    valor_numerico: Optional[int] = None
+    es_alarma: Optional[bool] = None
+    prioridad_alerta_id: Optional[int] = None
+    orden: Optional[int] = None
 
 class QuestionOptionResponse(BaseModel):
-    id: str
-    pregunta_id: str
-    texto: str
-    valor: str
-    alerta: bool
+    id: int
+    pregunta_id: int
+    texto_opcion: str
+    valor_numerico: Optional[int] = None
+    es_alarma: bool
+    prioridad_alerta_id: Optional[int] = None
+    orden: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -226,11 +308,13 @@ class QuestionOptionResponse(BaseModel):
 
 class AuditLogResponse(BaseModel):
     id: str
-    usuario_id: str
+    usuario_id: Optional[str] = None
+    gestante_id: Optional[str] = None
     accion: str
-    entidad: str
-    entidad_id: Optional[str] = None
-    detalles: Optional[Any] = None
+    tabla_afectada: str
+    registro_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    detalle: Optional[Any] = None
     created_at: datetime
 
     class Config:
@@ -241,3 +325,28 @@ class SystemHealthResponse(BaseModel):
     database: str
     version: str
     uptime: str
+
+
+# ---- 11.9 Gestantes ----
+
+class GestanteListResponse(BaseModel):
+    id: str
+    codigo_gmi: str
+    fecha_nacimiento: date
+    fecha_ultima_menstruacion: date
+    fecha_probable_parto: Optional[date] = None
+    semanas_eg_ingreso: Optional[int] = None
+    modulo_activo_id: Optional[int] = None
+    activa: bool
+    anio_ingreso: int
+    created_at: Optional[datetime] = None
+    ultimo_acceso: Optional[datetime] = None
+    ultima_pregunta_respondida: Optional[str] = None
+    ultima_respuesta_fecha: Optional[datetime] = None
+    ultimo_estado_alerta: Optional[str] = None
+    ultima_prioridad_alerta_id: Optional[int] = None
+    nivel_riesgo: Optional[str] = None
+    clasificacion_ia: Optional[str] = None
+
+    class Config:
+        from_attributes = True

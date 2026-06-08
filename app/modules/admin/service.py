@@ -1,14 +1,21 @@
 import shutil
+import csv
+import io
 from pathlib import Path
 import tempfile
 import uuid
+from datetime import datetime
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+
+from openpyxl import Workbook
 
 from app.modules.admin.excel.processor import process_excel
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
+from app.database.models.gestante import Gestante
+from app.database.models.riesgo import ClasificacionRiesgo
 from app.modules.admin import schemas, repository
 from app.core.security import hash_password
 from app.core.exceptions import NotFoundException, ConflictException
@@ -178,80 +185,347 @@ async def update_catalog_item_status(
 
 # ---- 11.4 Contenido Educativo ----
 
-async def get_educational_contents(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def get_educational_categories(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.EducationalCategoryResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_educational_categories(db, offset, limit=size)
+    return [schemas.EducationalCategoryResponse.model_validate(c) for c in items]
 
-async def create_educational_content(db: AsyncSession, data: schemas.EducationalContentCreate):
-    _not_implemented()
 
-async def update_educational_content(db: AsyncSession, item_id: str, data: schemas.EducationalContentUpdate):
-    _not_implemented()
+async def create_educational_category(
+    db: AsyncSession, data: schemas.EducationalCategoryCreate
+) -> schemas.EducationalCategoryResponse:
+    obj = await repository.create_educational_category(
+        db,
+        nombre=data.nombre,
+        descripcion=data.descripcion,
+        icono=data.icono,
+        orden=data.orden,
+    )
+    return schemas.EducationalCategoryResponse.model_validate(obj)
 
-async def update_educational_content_status(db: AsyncSession, item_id: str, data: schemas.EducationalContentStatusUpdate):
-    _not_implemented()
 
-async def get_educational_categories(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def update_educational_category(
+    db: AsyncSession, item_id: int, data: schemas.EducationalCategoryUpdate
+) -> schemas.EducationalCategoryResponse:
+    obj = await repository.update_educational_category(
+        db, item_id,
+        nombre=data.nombre,
+        descripcion=data.descripcion,
+        icono=data.icono,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Categoría educativa no encontrada.")
+    return schemas.EducationalCategoryResponse.model_validate(obj)
 
-async def create_educational_category(db: AsyncSession, data: schemas.EducationalCategoryCreate):
-    _not_implemented()
 
-async def update_educational_category(db: AsyncSession, item_id: str, data: schemas.EducationalCategoryUpdate):
-    _not_implemented()
+async def get_educational_contents(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.EducationalContentResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_educational_contents(db, offset, limit=size)
+    return [schemas.EducationalContentResponse.model_validate(c) for c in items]
 
-async def get_checklist_items(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
 
-async def create_checklist_item(db: AsyncSession, data: schemas.ChecklistItemCreate):
-    _not_implemented()
+async def create_educational_content(
+    db: AsyncSession, data: schemas.EducationalContentCreate
+) -> schemas.EducationalContentResponse:
+    obj = await repository.create_educational_content(
+        db,
+        categoria_id=data.categoria_id,
+        titulo=data.titulo,
+        descripcion=data.descripcion,
+        tipo_contenido=data.tipo_contenido,
+        cuerpo_texto=data.cuerpo_texto,
+        url_recurso=data.url_recurso,
+        url_imagen=data.url_imagen,
+        modulo_id=data.modulo_id,
+        semana_eg_inicio=data.semana_eg_inicio,
+        semana_eg_fin=data.semana_eg_fin,
+        duracion_minutos=data.duracion_minutos,
+        orden=data.orden,
+    )
+    return schemas.EducationalContentResponse.model_validate(obj)
 
-async def update_checklist_item(db: AsyncSession, item_id: str, data: schemas.ChecklistItemUpdate):
-    _not_implemented()
 
-async def update_checklist_item_status(db: AsyncSession, item_id: str, data: schemas.ChecklistItemStatusUpdate):
-    _not_implemented()
+async def update_educational_content(
+    db: AsyncSession, item_id: int, data: schemas.EducationalContentUpdate
+) -> schemas.EducationalContentResponse:
+    obj = await repository.update_educational_content(
+        db, item_id,
+        categoria_id=data.categoria_id,
+        titulo=data.titulo,
+        descripcion=data.descripcion,
+        tipo_contenido=data.tipo_contenido,
+        cuerpo_texto=data.cuerpo_texto,
+        url_recurso=data.url_recurso,
+        url_imagen=data.url_imagen,
+        modulo_id=data.modulo_id,
+        semana_eg_inicio=data.semana_eg_inicio,
+        semana_eg_fin=data.semana_eg_fin,
+        duracion_minutos=data.duracion_minutos,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Contenido educativo no encontrado.")
+    return schemas.EducationalContentResponse.model_validate(obj)
+
+
+async def update_educational_content_status(
+    db: AsyncSession, item_id: int, data: schemas.EducationalContentStatusUpdate
+) -> schemas.EducationalContentResponse:
+    obj = await repository.set_educational_content_status(db, item_id, data.activo)
+    if obj is None:
+        raise NotFoundException("Contenido educativo no encontrado.")
+    return schemas.EducationalContentResponse.model_validate(obj)
+
+
+async def get_checklist_items(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.ChecklistItemResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_checklist_items(db, offset, limit=size)
+    return [schemas.ChecklistItemResponse.model_validate(c) for c in items]
+
+
+async def create_checklist_item(
+    db: AsyncSession, data: schemas.ChecklistItemCreate
+) -> schemas.ChecklistItemResponse:
+    obj = await repository.create_checklist_item(
+        db,
+        texto=data.texto,
+        modulo_id=data.modulo_id,
+        semana_eg=data.semana_eg,
+        orden=data.orden,
+    )
+    return schemas.ChecklistItemResponse.model_validate(obj)
+
+
+async def update_checklist_item(
+    db: AsyncSession, item_id: int, data: schemas.ChecklistItemUpdate
+) -> schemas.ChecklistItemResponse:
+    obj = await repository.update_checklist_item(
+        db, item_id,
+        texto=data.texto,
+        modulo_id=data.modulo_id,
+        semana_eg=data.semana_eg,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Ítem de checklist no encontrado.")
+    return schemas.ChecklistItemResponse.model_validate(obj)
+
+
+async def update_checklist_item_status(
+    db: AsyncSession, item_id: int, data: schemas.ChecklistItemStatusUpdate
+) -> schemas.ChecklistItemResponse:
+    obj = await repository.set_checklist_item_status(db, item_id, data.activo)
+    if obj is None:
+        raise NotFoundException("Ítem de checklist no encontrado.")
+    return schemas.ChecklistItemResponse.model_validate(obj)
+
+
+# ---- 11.9 Gestantes ----
+
+async def get_gestantes(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.GestanteListResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_gestantes_with_details(db, offset, size)
+    return [schemas.GestanteListResponse.model_validate(item) for item in items]
 
 
 # ---- 11.5 Preguntas de Seguimiento ----
 
-async def get_follow_up_questions(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def get_follow_up_questions(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.FollowUpQuestionResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_followup_questions(db, offset, size)
+    return [schemas.FollowUpQuestionResponse.model_validate(q) for q in items]
 
-async def create_follow_up_question(db: AsyncSession, data: schemas.FollowUpQuestionCreate):
-    _not_implemented()
 
-async def update_follow_up_question(db: AsyncSession, item_id: str, data: schemas.FollowUpQuestionUpdate):
-    _not_implemented()
+async def create_follow_up_question(
+    db: AsyncSession, data: schemas.FollowUpQuestionCreate
+) -> schemas.FollowUpQuestionResponse:
+    obj = await repository.create_followup_question(
+        db,
+        texto_pregunta=data.texto_pregunta,
+        tipo_respuesta=data.tipo_respuesta,
+        modulo_id=data.modulo_id,
+        frecuencia=data.frecuencia,
+        es_signo_alarma=data.es_signo_alarma,
+        prioridad_alerta_default_id=data.prioridad_alerta_default_id,
+        orden=data.orden,
+    )
+    return schemas.FollowUpQuestionResponse.model_validate(obj)
 
-async def update_follow_up_question_status(db: AsyncSession, item_id: str, data: schemas.FollowUpQuestionStatusUpdate):
-    _not_implemented()
 
-async def get_question_options(db: AsyncSession, question_id: str):
-    _not_implemented()
+async def update_follow_up_question(
+    db: AsyncSession, item_id: int, data: schemas.FollowUpQuestionUpdate
+) -> schemas.FollowUpQuestionResponse:
+    obj = await repository.update_followup_question(
+        db, item_id,
+        texto_pregunta=data.texto_pregunta,
+        tipo_respuesta=data.tipo_respuesta,
+        modulo_id=data.modulo_id,
+        frecuencia=data.frecuencia,
+        es_signo_alarma=data.es_signo_alarma,
+        prioridad_alerta_default_id=data.prioridad_alerta_default_id,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Pregunta de seguimiento no encontrada.")
+    return schemas.FollowUpQuestionResponse.model_validate(obj)
 
-async def create_question_option(db: AsyncSession, question_id: str, data: schemas.QuestionOptionCreate):
-    _not_implemented()
 
-async def update_question_option(db: AsyncSession, option_id: str, data: schemas.QuestionOptionUpdate):
-    _not_implemented()
+async def update_follow_up_question_status(
+    db: AsyncSession, item_id: int, data: schemas.FollowUpQuestionStatusUpdate
+) -> schemas.FollowUpQuestionResponse:
+    obj = await repository.set_followup_question_status(db, item_id, data.activo)
+    if obj is None:
+        raise NotFoundException("Pregunta de seguimiento no encontrada.")
+    return schemas.FollowUpQuestionResponse.model_validate(obj)
 
-async def delete_question_option(db: AsyncSession, option_id: str):
-    _not_implemented()
+
+async def get_question_options(
+    db: AsyncSession, question_id: int
+) -> list[schemas.QuestionOptionResponse]:
+    items = await repository.get_options_by_question_id(db, question_id)
+    return [schemas.QuestionOptionResponse.model_validate(o) for o in items]
+
+
+async def create_question_option(
+    db: AsyncSession, question_id: int, data: schemas.QuestionOptionCreate
+) -> schemas.QuestionOptionResponse:
+    obj = await repository.create_option(
+        db,
+        pregunta_id=question_id,
+        texto_opcion=data.texto_opcion,
+        valor_numerico=data.valor_numerico,
+        es_alarma=data.es_alarma,
+        prioridad_alerta_id=data.prioridad_alerta_id,
+        orden=data.orden,
+    )
+    return schemas.QuestionOptionResponse.model_validate(obj)
+
+
+async def update_question_option(
+    db: AsyncSession, option_id: int, data: schemas.QuestionOptionUpdate
+) -> schemas.QuestionOptionResponse:
+    obj = await repository.update_option(
+        db, option_id,
+        texto_opcion=data.texto_opcion,
+        valor_numerico=data.valor_numerico,
+        es_alarma=data.es_alarma,
+        prioridad_alerta_id=data.prioridad_alerta_id,
+        orden=data.orden,
+    )
+    if obj is None:
+        raise NotFoundException("Opción no encontrada.")
+    return schemas.QuestionOptionResponse.model_validate(obj)
+
+
+async def delete_question_option(
+    db: AsyncSession, option_id: int
+) -> None:
+    deleted = await repository.delete_option(db, option_id)
+    if not deleted:
+        raise NotFoundException("Opción no encontrada.")
 
 
 # ---- 11.6 Auditoría y Monitoreo ----
 
-async def get_audit_logs(db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"):
-    _not_implemented()
+async def get_audit_logs(
+    db: AsyncSession, page: int = 1, size: int = 20, sort: str = "fecha_desc"
+) -> list[schemas.AuditLogResponse]:
+    offset = (page - 1) * size
+    items = await repository.get_all_audit_logs(db, offset, size, sort)
+    return [schemas.AuditLogResponse.model_validate(a) for a in items]
 
-async def get_system_health(db: AsyncSession):
-    _not_implemented()
+
+async def get_system_health(db: AsyncSession) -> schemas.SystemHealthResponse:
+    try:
+        await db.execute(select(1))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    return schemas.SystemHealthResponse(
+        status="ok",
+        database=db_status,
+        version="1.0",
+        uptime="running",
+    )
 
 
 # ---- 11.7 Exportación ----
 
-async def export_gestantes(db: AsyncSession, format: str = "xlsx"):
-    _not_implemented()
+async def export_gestantes(db: AsyncSession, format: str = "xlsx") -> bytes:
+    result = await db.execute(select(Gestante).order_by(Gestante.created_at.desc()))
+    gestantes = result.scalars().all()
 
-async def export_indicators(db: AsyncSession, format: str = "xlsx"):
-    _not_implemented()
+    rows = []
+    for g in gestantes:
+        rows.append({
+            "codigo_gmi": g.codigo_gmi,
+            "fecha_nacimiento": str(g.fecha_nacimiento) if g.fecha_nacimiento else "",
+            "fecha_ultima_menstruacion": str(g.fecha_ultima_menstruacion) if g.fecha_ultima_menstruacion else "",
+            "fecha_probable_parto": str(g.fecha_probable_parto) if g.fecha_probable_parto else "",
+            "tipo_regimen": g.tipo_regimen or "",
+            "anio_ingreso": g.anio_ingreso,
+            "semanas_eg_ingreso": g.semanas_eg_ingreso or "",
+            "activa": "Sí" if g.activa else "No",
+            "modulo_activo_id": g.modulo_activo_id or "",
+            "created_at": str(g.created_at) if g.created_at else "",
+        })
+
+    if format == "csv":
+        return _rows_to_csv(rows)
+    return _rows_to_xlsx(rows, "Gestantes")
+
+
+async def export_indicators(db: AsyncSession, format: str = "xlsx") -> bytes:
+    total = await db.scalar(select(func.count(Gestante.id)))
+    activas = await db.scalar(select(func.count(Gestante.id)).where(Gestante.activa == True))
+
+    riesgo_counts = await db.execute(
+        select(ClasificacionRiesgo.tipo_riesgo, func.count(ClasificacionRiesgo.id))
+        .group_by(ClasificacionRiesgo.tipo_riesgo)
+    )
+    riesgo_rows = []
+    for tipo, cnt in riesgo_counts:
+        riesgo_rows.append({"indicador": f"Gestantes riesgo {tipo}", "valor": cnt})
+
+    rows = [
+        {"indicador": "Total gestantes", "valor": total or 0},
+        {"indicador": "Gestantes activas", "valor": activas or 0},
+    ] + riesgo_rows
+
+    if format == "csv":
+        return _rows_to_csv(rows)
+    return _rows_to_xlsx(rows, "Indicadores")
+
+
+def _rows_to_xlsx(rows: list[dict], sheet_name: str) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    if rows:
+        ws.append(list(rows[0].keys()))
+        for row in rows:
+            ws.append(list(row.values()))
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _rows_to_csv(rows: list[dict]) -> bytes:
+    buf = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return buf.getvalue().encode("utf-8-sig")

@@ -3,6 +3,9 @@ from datetime import datetime
 
 from sqlmodel import SQLModel, Field
 
+# Ensure catalogo models are registered in metadata before FK resolution
+import app.database.models.catalogos  # noqa: F401
+
 
 class CatCategoriaEducativa(SQLModel, table=True):
     __tablename__ = "cat_categoria_educativa"

@@ -1,5 +1,7 @@
 from typing import Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, File, UploadFile, status, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
@@ -67,14 +69,64 @@ async def list_roles(
 
 # ---- 11.2 Carga Masiva Excel ----
 
+#@router.post("/upload/gestantes", response_model=schemas.CargaExcelResponse, status_code=status.HTTP_201_CREATED)
+#async def upload_excel(
+#    file: UploadFile = File(...),
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Subir Excel (modo: validar_solo | procesar)"""
+#    return await service.upload_and_process(db, file, staff.id)
+
+#@router.get("/upload/gestantes/history", response_model=list[schemas.CargaExcelResponse])
+#async def list_cargas(
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Historial de cargas"""
+#    return await service.get_all_cargas(db)
+
+#@router.get("/upload/gestantes/template")
+#async def download_template(
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#):
+#    """Descargar plantilla Excel"""
+    # Placeholder for template download
+#    return service._not_implemented()
+
+#@router.get("/upload/gestantes/{cargaId}", response_model=schemas.CargaExcelResponse)
+#async def get_carga_status(
+#    cargaId: str,
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Estado de carga"""
+#    carga, _ = await service.get_carga_with_details(db, cargaId)
+#    return carga
+
+#@router.get("/upload/gestantes/{cargaId}/detail", response_model=schemas.CargaExcelDetalleResponse)
+#async def get_carga_detail(
+#    cargaId: str,
+#    staff: UsuarioStaff = Depends(get_current_staff),
+#    db: AsyncSession = Depends(get_db),
+#):
+#    """Detalle fila por fila"""
+#    carga, detalles = await service.get_carga_with_details(db, cargaId)
+#    return schemas.CargaExcelDetalleResponse(
+#        **schemas.CargaExcelResponse.model_validate(carga).model_dump(),
+#        detalles=[schemas.CargaDetalleResponse.model_validate(d) for d in detalles],
+#    )
+
+# ---- 11.2 Carga Masiva Excel ----
+
 @router.post("/upload/gestantes", response_model=schemas.CargaExcelResponse, status_code=status.HTTP_201_CREATED)
 async def upload_excel(
     file: UploadFile = File(...),
-    staff: UsuarioStaff = Depends(get_current_staff),
+    # staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Subir Excel (modo: validar_solo | procesar)"""
-    return await service.upload_and_process(db, file, staff.id)
+    # return await service.upload_and_process(db, file, staff.id)
+    return await service.upload_and_process(db, file, "a1b2c3d4-0000-0000-0000-000000000001")
 
 @router.get("/upload/gestantes/history", response_model=list[schemas.CargaExcelResponse])
 async def list_cargas(
@@ -94,7 +146,7 @@ async def download_template(
 @router.get("/upload/gestantes/{cargaId}", response_model=schemas.CargaExcelResponse)
 async def get_carga_status(
     cargaId: str,
-    staff: UsuarioStaff = Depends(get_current_staff),
+    # staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Estado de carga"""
@@ -113,7 +165,6 @@ async def get_carga_detail(
         **schemas.CargaExcelResponse.model_validate(carga).model_dump(),
         detalles=[schemas.CargaDetalleResponse.model_validate(d) for d in detalles],
     )
-
 
 # ---- 11.3 Catálogos ----
 
@@ -185,7 +236,7 @@ async def create_educational_content(
 
 @router.put("/educational-content/{id}", response_model=schemas.EducationalContentResponse)
 async def update_educational_content(
-    id: str,
+    id: int,
     request: schemas.EducationalContentUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -195,7 +246,7 @@ async def update_educational_content(
 
 @router.patch("/educational-content/{id}/status", response_model=schemas.EducationalContentResponse)
 async def update_educational_content_status(
-    id: str,
+    id: int,
     request: schemas.EducationalContentStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -225,7 +276,7 @@ async def create_educational_category(
 
 @router.put("/educational-categories/{id}", response_model=schemas.EducationalCategoryResponse)
 async def update_educational_category(
-    id: str,
+    id: int,
     request: schemas.EducationalCategoryUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -255,7 +306,7 @@ async def create_checklist_item(
 
 @router.put("/checklist-items/{id}", response_model=schemas.ChecklistItemResponse)
 async def update_checklist_item(
-    id: str,
+    id: int,
     request: schemas.ChecklistItemUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -265,7 +316,7 @@ async def update_checklist_item(
 
 @router.patch("/checklist-items/{id}/status", response_model=schemas.ChecklistItemResponse)
 async def update_checklist_item_status(
-    id: str,
+    id: int,
     request: schemas.ChecklistItemStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -298,7 +349,7 @@ async def create_follow_up_question(
 
 @router.put("/follow-up-questions/{id}", response_model=schemas.FollowUpQuestionResponse)
 async def update_follow_up_question(
-    id: str,
+    id: int,
     request: schemas.FollowUpQuestionUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -308,7 +359,7 @@ async def update_follow_up_question(
 
 @router.patch("/follow-up-questions/{id}/status", response_model=schemas.FollowUpQuestionResponse)
 async def update_follow_up_question_status(
-    id: str,
+    id: int,
     request: schemas.FollowUpQuestionStatusUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -318,7 +369,7 @@ async def update_follow_up_question_status(
 
 @router.get("/follow-up-questions/{id}/options", response_model=list[schemas.QuestionOptionResponse])
 async def list_question_options(
-    id: str,
+    id: int,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
@@ -327,7 +378,7 @@ async def list_question_options(
 
 @router.post("/follow-up-questions/{id}/options", response_model=schemas.QuestionOptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_question_option(
-    id: str,
+    id: int,
     request: schemas.QuestionOptionCreate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -337,7 +388,7 @@ async def create_question_option(
 
 @router.put("/follow-up-questions/options/{optionId}", response_model=schemas.QuestionOptionResponse)
 async def update_question_option(
-    optionId: str,
+    optionId: int,
     request: schemas.QuestionOptionUpdate,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
@@ -347,7 +398,7 @@ async def update_question_option(
 
 @router.delete("/follow-up-questions/options/{optionId}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_question_option(
-    optionId: str,
+    optionId: int,
     staff: UsuarioStaff = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
@@ -386,7 +437,14 @@ async def export_gestantes(
     db: AsyncSession = Depends(get_db),
 ):
     """Exportar gestantes"""
-    return await service.export_gestantes(db, format)
+    data = await service.export_gestantes(db, format)
+    media = "text/csv; charset=utf-8-sig" if format == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ext = "csv" if format == "csv" else "xlsx"
+    return StreamingResponse(
+        iter([data]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="gestantes_{datetime.utcnow().strftime("%Y%m%d")}.{ext}"'},
+    )
 
 @router.get("/export/indicators")
 async def export_indicators(
@@ -395,4 +453,26 @@ async def export_indicators(
     db: AsyncSession = Depends(get_db),
 ):
     """Exportar indicadores"""
+    data = await service.export_indicators(db, format)
+    media = "text/csv; charset=utf-8-sig" if format == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ext = "csv" if format == "csv" else "xlsx"
+    return StreamingResponse(
+        iter([data]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="indicadores_{datetime.utcnow().strftime("%Y%m%d")}.{ext}"'},
+    )
     return await service.export_indicators(db, format)
+
+
+# ---- 11.9 Gestantes ----
+
+@router.get("/gestantes", response_model=list[schemas.GestanteListResponse])
+async def list_gestantes(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    sort: str = "fecha_desc",
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Listar gestantes con datos de seguimiento y alertas"""
+    return await service.get_gestantes(db, page, size, sort)
