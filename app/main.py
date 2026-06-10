@@ -43,12 +43,12 @@ async def health_check():
 # routers
 from app.modules.auth.router import router as auth_router
 from app.modules.m0.router import router as m0_router
-from app.modules.clinical.router import router as clinical_router
 from app.modules.m5.router import router as m5_router
 from app.modules.m4.router import router as m4_router
 from app.modules.m6.router import router as m6_router
-
+from app.modules.ia.router import router as ia_router
 from app.modules.admin.router import router as admin_router
+from app.modules.clinical.router import router as clinical_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(m0_router, prefix="/api/v1/m0", tags=["M0 - Registro y Perfil"])
@@ -57,3 +57,4 @@ app.include_router(m4_router, prefix="/api/v1/m4", tags=["M4 - Parto y Puerperio
 app.include_router(m5_router, prefix="/api/v1/m5", tags=["M5 - Educación y Autocuidado"])
 app.include_router(m6_router, prefix="/api/v1/m6", tags=["M6 - Comunicaciones y Alertas"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin - Administración"])
+app.include_router(ia_router, prefix="/api/v1/ia", tags=["IA"])
