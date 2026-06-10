@@ -1,0 +1,309 @@
+import json
+from datetime import date, datetime
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import NotFoundException
+from app.database.models.soporte import ChatIa
+from app.database.models.riesgo import ClasificacionRiesgo
+from app.database.models.gestante import Gestante
+from app.modules.ia import repository
+from app.modules.ia.schemas import (
+    ChatMessageResponse,
+    ChatHistoryResponse,
+    RiskSummaryResponse,
+    RecommendationResponse,
+    TriageRequest,
+    TriageResponse,
+    ClinicalSummaryResponse,
+    ExplainabilityResponse,
+)
+from app.modules.ia.prompts import (
+    build_contexto_clinico,
+    build_system_prompt_chat,
+    build_prompt_risk_summary,
+    build_prompt_recommendations,
+    build_prompt_triage,
+    build_prompt_clinical_summary,
+    build_prompt_explainability,
+    _calcular_semanas,
+)
+from app.services.openai import chat_completion
+
+# ---- Helpers ----
+
+async def _get_contexto(db: AsyncSession, gestante: Gestante) -> tuple[str, int, str]:
+    """Recopila todo el contexto clínico y devuelve (contexto_str, semanas, modulo_nombre)."""
+    perfil = await repository.get_perfil_clinico(db, gestante.id)
+    formula = await repository.get_formula_obstetrica(db, gestante.id)
+    antecedentes = await repository.get_antecedentes(db, gestante.id)
+    ultimos_controles = await repository.get_ultimos_controles(db, gestante.id)
+    signos_vitales = await repository.get_ultimos_signos_vitales(db, gestante.id)
+    ultimos_examenes = await repository.get_ultimos_examenes(db, gestante.id)
+    alertas_activas = await repository.get_alertas_activas(db, gestante.id)
+
+    modulo_nombre = "No determinado"
+    if gestante.modulo_activo_id:
+        modulo = await repository.get_modulo_by_id(db, gestante.modulo_activo_id)
+        if modulo:
+            modulo_nombre = modulo.nombre
+
+    semanas = _calcular_semanas(gestante.fecha_ultima_menstruacion)
+
+    contexto = build_contexto_clinico(
+        gestante=gestante,
+        perfil=perfil,
+        formula=formula,
+        antecedentes=antecedentes,
+        ultimos_controles=ultimos_controles,
+        signos_vitales=signos_vitales,
+        ultimos_examenes=ultimos_examenes,
+        alertas_activas=alertas_activas,
+        modulo_nombre=modulo_nombre,
+    )
+
+    return contexto, semanas, modulo_nombre
+
+
+def _parse_json_response(response_text: str) -> dict:
+    """Parsea la respuesta JSON de OpenAI limpiando posibles backticks."""
+    clean = response_text.strip()
+    if clean.startswith("```"):
+        clean = clean.split("```")[1]
+        if clean.startswith("json"):
+            clean = clean[4:]
+    return json.loads(clean.strip())
+
+
+# ---- Chat ----
+
+async def send_chat_message(db: AsyncSession, gestante: Gestante, mensaje: str) -> ChatMessageResponse:
+    contexto, _, _ = await _get_contexto(db, gestante)
+    system_prompt = build_system_prompt_chat(contexto)
+
+    # Cargar historial para memoria conversacional
+    historial = await repository.get_historial_by_gestante(db, gestante.id)
+
+    # Construir mensajes para OpenAI
+    messages = [{"role": "system", "content": system_prompt}]
+    for h in historial:
+        messages.append({"role": h.rol, "content": h.contenido})
+    messages.append({"role": "user", "content": mensaje})
+
+    # Guardar mensaje del usuario
+    msg_usuario = ChatIa(
+        gestante_id=gestante.id,
+        rol="user",
+        contenido=mensaje,
+    )
+    await repository.create_mensaje(db, msg_usuario)
+
+    # Llamar a OpenAI
+    respuesta_texto = await chat_completion(messages, temperature=0.5, max_tokens=300)
+
+    # Guardar respuesta del asistente
+    msg_asistente = ChatIa(
+        gestante_id=gestante.id,
+        rol="assistant",
+        contenido=respuesta_texto,
+    )
+    msg_asistente = await repository.create_mensaje(db, msg_asistente)
+
+    return ChatMessageResponse(
+        id=msg_asistente.id,
+        rol=msg_asistente.rol,
+        contenido=msg_asistente.contenido,
+        created_at=msg_asistente.created_at,
+    )
+
+
+async def get_chat_history(db: AsyncSession, gestante_id: str) -> ChatHistoryResponse:
+    historial = await repository.get_historial_by_gestante(db, gestante_id, limit=50)
+    mensajes = [
+        ChatMessageResponse(
+            id=h.id,
+            rol=h.rol,
+            contenido=h.contenido,
+            created_at=h.created_at,
+        )
+        for h in historial
+    ]
+    return ChatHistoryResponse(mensajes=mensajes, total=len(mensajes))
+
+
+async def delete_chat_history(db: AsyncSession, gestante_id: str) -> dict:
+    await repository.delete_historial_by_gestante(db, gestante_id)
+    return {"detail": "Historial de conversación eliminado exitosamente"}
+
+
+# ---- Risk Summary ----
+
+async def get_risk_summary(db: AsyncSession, gestante: Gestante) -> RiskSummaryResponse:
+    contexto, semanas, _ = await _get_contexto(db, gestante)
+    messages = build_prompt_risk_summary(contexto, semanas)
+
+    response_text = await chat_completion(messages, temperature=0.2, max_tokens=800)
+
+    try:
+        data = _parse_json_response(response_text)
+    except (json.JSONDecodeError, ValueError):
+        return RiskSummaryResponse(
+            nivel_riesgo="amarillo",
+            resumen="No se pudo generar el resumen de riesgo automáticamente.",
+            factores_riesgo=[],
+            recomendaciones=["Consulte con su médico tratante"],
+            explicacion_ia=response_text,
+            semana_gestacion=semanas,
+        )
+
+    # Persistir clasificación de riesgo
+    clasificacion = ClasificacionRiesgo(
+        gestante_id=gestante.id,
+        tipo_riesgo="obstetrico",
+        nivel=data.get("nivel_riesgo", "bajo"),
+        clasificacion_ia=data.get("nivel_riesgo", "amarillo"),
+        diagnostico_texto=data.get("resumen", ""),
+        explicacion_ia=data.get("explicacion_ia", ""),
+        fecha_evaluacion=datetime.utcnow(),
+    )
+    await repository.create_clasificacion_riesgo(db, clasificacion)
+
+    return RiskSummaryResponse(
+        assessment_id=clasificacion.id,
+        nivel_riesgo=data.get("nivel_riesgo", "amarillo"),
+        resumen=data.get("resumen", ""),
+        factores_riesgo=data.get("factores_riesgo", []),
+        recomendaciones=data.get("recomendaciones", []),
+        explicacion_ia=data.get("explicacion_ia", ""),
+        semana_gestacion=semanas,
+    )
+
+
+# ---- Recommendations ----
+
+async def get_recommendations(db: AsyncSession, gestante: Gestante) -> RecommendationResponse:
+    contexto, semanas, modulo_nombre = await _get_contexto(db, gestante)
+    messages = build_prompt_recommendations(contexto, semanas, modulo_nombre)
+
+    response_text = await chat_completion(messages, temperature=0.4, max_tokens=600)
+
+    try:
+        data = _parse_json_response(response_text)
+    except (json.JSONDecodeError, ValueError):
+        return RecommendationResponse(
+            semana_gestacion=semanas,
+            modulo=modulo_nombre,
+            recomendaciones=["Consulte con su médico para recomendaciones personalizadas"],
+            mensaje_motivacional="Cada día que cuidas de ti misma es un paso hacia el bienestar de tu bebé.",
+        )
+
+    return RecommendationResponse(
+        semana_gestacion=semanas,
+        modulo=modulo_nombre,
+        recomendaciones=data.get("recomendaciones", []),
+        mensaje_motivacional=data.get("mensaje_motivacional", ""),
+    )
+
+
+# ---- Triage ----
+
+async def run_triage(db: AsyncSession, gestante: Gestante, data: TriageRequest) -> TriageResponse:
+    contexto, semanas, _ = await _get_contexto(db, gestante)
+    messages = build_prompt_triage(
+        sintomas=data.sintomas,
+        respuestas_recientes=data.respuestas_recientes,
+        contexto=contexto,
+        semanas=semanas,
+    )
+
+    response_text = await chat_completion(messages, temperature=0.1, max_tokens=500)
+
+    try:
+        data_resp = _parse_json_response(response_text)
+    except (json.JSONDecodeError, ValueError):
+        return TriageResponse(
+            nivel_urgencia="urgente",
+            descripcion="No se pudo evaluar automáticamente. Consulte con su médico.",
+            acciones_recomendadas=["Contacte a su IPS de referencia"],
+            requiere_llamada_emergencia=False,
+        )
+
+    return TriageResponse(
+        nivel_urgencia=data_resp.get("nivel_urgencia", "urgente"),
+        descripcion=data_resp.get("descripcion", ""),
+        acciones_recomendadas=data_resp.get("acciones_recomendadas", []),
+        requiere_llamada_emergencia=data_resp.get("requiere_llamada_emergencia", False),
+    )
+
+
+# ---- Clinical Summary (para staff) ----
+
+async def get_clinical_summary(db: AsyncSession, gestante: Gestante) -> ClinicalSummaryResponse:
+    contexto, semanas, modulo_nombre = await _get_contexto(db, gestante)
+    alertas = await repository.get_alertas_activas(db, gestante.id)
+
+    messages = build_prompt_clinical_summary(
+        contexto=contexto,
+        semanas=semanas,
+        modulo=modulo_nombre,
+        alertas_count=len(alertas),
+    )
+
+    response_text = await chat_completion(
+        messages, model="gpt-4o", temperature=0.2, max_tokens=800
+    )
+
+    try:
+        data = _parse_json_response(response_text)
+    except (json.JSONDecodeError, ValueError):
+        return ClinicalSummaryResponse(
+            codigo_gmi=gestante.codigo_gmi,
+            semana_gestacion=semanas,
+            modulo_activo=modulo_nombre,
+            resumen_clinico="No se pudo generar el resumen clínico automáticamente.",
+            alertas_activas=len(alertas),
+            puntos_clave=[],
+            sugerencias_clinico=[],
+        )
+
+    return ClinicalSummaryResponse(
+        codigo_gmi=gestante.codigo_gmi,
+        semana_gestacion=semanas,
+        modulo_activo=modulo_nombre,
+        resumen_clinico=data.get("resumen_clinico", ""),
+        alertas_activas=len(alertas),
+        puntos_clave=data.get("puntos_clave", []),
+        sugerencias_clinico=data.get("sugerencias_clinico", []),
+    )
+
+
+# ---- Explainability ----
+
+async def get_explainability(db: AsyncSession, gestante: Gestante, assessment_id: str) -> ExplainabilityResponse:
+    clasificacion = await repository.get_clasificacion_riesgo_by_id(db, assessment_id)
+    if clasificacion is None or clasificacion.gestante_id != gestante.id:
+        raise NotFoundException("Clasificación de riesgo no encontrada")
+
+    contexto, _, _ = await _get_contexto(db, gestante)
+    messages = build_prompt_explainability(clasificacion, contexto)
+
+    response_text = await chat_completion(messages, temperature=0.2, max_tokens=600)
+
+    try:
+        data = _parse_json_response(response_text)
+    except (json.JSONDecodeError, ValueError):
+        return ExplainabilityResponse(
+            assessment_id=assessment_id,
+            nivel_riesgo=clasificacion.clasificacion_ia or "amarillo",
+            explicacion=clasificacion.explicacion_ia or "No disponible",
+            factores_determinantes=[],
+            datos_utilizados=[],
+        )
+
+    return ExplainabilityResponse(
+        assessment_id=assessment_id,
+        nivel_riesgo=clasificacion.clasificacion_ia or "amarillo",
+        explicacion=data.get("explicacion", ""),
+        factores_determinantes=data.get("factores_determinantes", []),
+        datos_utilizados=data.get("datos_utilizados", []),
+    )

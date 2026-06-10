@@ -24,6 +24,11 @@ async def get_gestante_by_id(db: AsyncSession, gestante_id: str) -> Gestante | N
     )
     return result.scalar_one_or_none()
 
+async def get_gestante_by_codigo(db: AsyncSession, codigo_gmi: str) -> Gestante | None:
+    result = await db.execute(
+        select(Gestante).where(Gestante.codigo_gmi == codigo_gmi)
+    )
+    return result.scalar_one_or_none()
 
 async def get_last_codigo_gmi(db: AsyncSession, anio: int) -> str | None:
     result = await db.execute(
