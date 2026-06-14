@@ -1,6 +1,7 @@
 """
 Operaciones de escritura en BD para el pipeline de carga masiva.
 """
+from datetime import datetime, timedelta
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -16,7 +17,7 @@ from app.database.models.complementarios import Vacunacion, RemisionInterdiscipl
 from app.database.models.desenlace import Parto, RecienNacido, AnticoncepcionPosparto
 from app.database.models.riesgo import ClasificacionRiesgo, Alerta
 from app.database.models.seguimiento import PreguntaSeguimiento, OpcionPreguntaSeguimiento, RespuestaSeguimiento
-from app.database.models.soporte import CargaExcel, CargaExcelDetalle
+from app.database.models.soporte import CargaExcel, CargaExcelDetalle, CitaMedica, LlamadaEmergencia
 from app.database.models.educacion import (
     CatCategoriaEducativa,
     ContenidoEducativo,
@@ -678,6 +679,108 @@ async def delete_option(
     await db.delete(obj)
     await db.flush()
     return True
+
+
+# ---- 12. Vista Admin de Gestantes ----
+
+async def get_alertas_by_gestante(db: AsyncSession, gestante_id: str) -> list:
+    from app.database.models.riesgo import Alerta
+    result = await db.execute(
+        select(Alerta, CatTipoAlerta.nombre, CatPrioridadAlerta.codigo)
+        .join(CatTipoAlerta, Alerta.tipo_alerta_id == CatTipoAlerta.id)
+        .join(CatPrioridadAlerta, Alerta.prioridad_id == CatPrioridadAlerta.id)
+        .where(Alerta.gestante_id == gestante_id)
+        .order_by(Alerta.created_at.desc())
+    )
+    return result.all()
+
+
+async def get_respuestas_with_pregunta_by_gestante(db: AsyncSession, gestante_id: str) -> list:
+    result = await db.execute(
+        select(RespuestaSeguimiento, PreguntaSeguimiento.texto_pregunta, PreguntaSeguimiento.tipo_respuesta)
+        .join(PreguntaSeguimiento, RespuestaSeguimiento.pregunta_id == PreguntaSeguimiento.id)
+        .where(RespuestaSeguimiento.gestante_id == gestante_id)
+        .order_by(RespuestaSeguimiento.created_at.desc())
+    )
+    return result.all()
+
+
+# ---- Citas Admin ----
+
+async def get_all_citas(
+    db: AsyncSession,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    gestante_id: str | None = None,
+) -> list:
+    if from_date is None:
+        from_date = datetime.utcnow()
+    if to_date is None:
+        to_date = from_date + timedelta(days=30)
+
+    query = (
+        select(CitaMedica, Gestante.codigo_gmi, CatIps.nombre)
+        .join(Gestante, CitaMedica.gestante_id == Gestante.id)
+        .join(CatIps, CitaMedica.ips_id == CatIps.id, isouter=True)
+        .where(CitaMedica.fecha_hora >= from_date)
+        .where(CitaMedica.fecha_hora <= to_date)
+        .order_by(CitaMedica.fecha_hora.asc())
+    )
+    if gestante_id:
+        query = query.where(CitaMedica.gestante_id == gestante_id)
+
+    result = await db.execute(query)
+    return result.all()
+
+
+async def get_citas_by_gestante(db: AsyncSession, gestante_id: str) -> list:
+    result = await db.execute(
+        select(CitaMedica, Gestante.codigo_gmi, CatIps.nombre)
+        .join(Gestante, CitaMedica.gestante_id == Gestante.id)
+        .join(CatIps, CitaMedica.ips_id == CatIps.id, isouter=True)
+        .where(CitaMedica.gestante_id == gestante_id)
+        .order_by(CitaMedica.fecha_hora.asc())
+    )
+    return result.all()
+
+
+async def get_cita_by_id_admin(db: AsyncSession, cita_id: str) -> tuple | None:
+    result = await db.execute(
+        select(CitaMedica, Gestante.codigo_gmi, CatIps.nombre)
+        .join(Gestante, CitaMedica.gestante_id == Gestante.id)
+        .join(CatIps, CitaMedica.ips_id == CatIps.id, isouter=True)
+        .where(CitaMedica.id == cita_id)
+    )
+    return result.one_or_none()
+
+
+async def create_cita_admin(db: AsyncSession, cita: CitaMedica) -> CitaMedica:
+    db.add(cita)
+    await db.flush()
+    await db.refresh(cita)
+    return cita
+
+
+async def save_cita_admin(db: AsyncSession, cita: CitaMedica) -> CitaMedica:
+    await db.flush()
+    await db.refresh(cita)
+    return cita
+
+
+async def get_llamadas_by_gestante(db: AsyncSession, gestante_id: str) -> list[LlamadaEmergencia]:
+    result = await db.execute(
+        select(LlamadaEmergencia)
+        .where(LlamadaEmergencia.gestante_id == gestante_id)
+        .order_by(LlamadaEmergencia.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def create_llamada_emergencia_admin(db: AsyncSession, llamada: LlamadaEmergencia) -> LlamadaEmergencia:
+    db.add(llamada)
+    await db.flush()
+    await db.refresh(llamada)
+    return llamada
 
 
 # ---- 11.6 Auditoría y Monitoreo ----

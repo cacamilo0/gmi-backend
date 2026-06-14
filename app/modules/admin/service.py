@@ -16,7 +16,19 @@ from app.modules.admin.excel.processor import process_excel
 from app.database.models.soporte import CargaExcel, CargaExcelDetalle
 from app.database.models.gestante import Gestante
 from app.database.models.riesgo import ClasificacionRiesgo
+from app.database.models.examenes import ExamenLaboratorio
+from app.database.models.soporte import CitaMedica, LlamadaEmergencia
 from app.modules.admin import schemas, repository
+from app.modules.clinical import repository as clinical_repository
+from app.modules.clinical.schemas import (
+    ExamenCreate,
+    ExamenResponse,
+)
+from app.modules.m6.schemas import (
+    CitaMedicaUpdate,
+    LlamadaEmergenciaCreate,
+    LlamadaEmergenciaResponse,
+)
 from app.core.security import hash_password
 from app.core.exceptions import NotFoundException, ConflictException
 
@@ -458,6 +470,319 @@ async def get_system_health(db: AsyncSession) -> schemas.SystemHealthResponse:
         version="1.0",
         uptime="running",
     )
+
+
+# ---- Helpers ----
+
+def _calcular_trimestre(semana: int) -> int:
+    if semana <= 13:
+        return 1
+    if semana <= 27:
+        return 2
+    return 3
+
+
+# ---- 12. Vista Admin de Gestantes ----
+
+async def get_gestante_exams(db: AsyncSession, gestante_id: str) -> list[ExamenResponse]:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    examenes = await clinical_repository.get_examenes_by_gestante(db, gestante_id)
+    result = []
+    for e in examenes:
+        tipo = await clinical_repository.get_tipo_examen_by_id(db, e.tipo_examen_id)
+        result.append(ExamenResponse(
+            id=e.id,
+            tipo_examen_id=e.tipo_examen_id,
+            tipo_examen_nombre=tipo.nombre if tipo else None,
+            fecha_toma=e.fecha_toma,
+            resultado=e.resultado,
+            resultado_numerico=e.resultado_numerico,
+            unidad=e.unidad,
+            trimestre=e.trimestre,
+            semana_gestacion=e.semana_gestacion,
+            observaciones=e.observaciones,
+            created_at=e.created_at,
+        ))
+    return result
+
+
+async def get_gestante_exam_by_id(db: AsyncSession, gestante_id: str, exam_id: str) -> ExamenResponse:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    examen = await clinical_repository.get_examen_by_id(db, exam_id)
+    if examen is None or examen.gestante_id != gestante_id:
+        raise NotFoundException("Examen no encontrado")
+
+    tipo = await clinical_repository.get_tipo_examen_by_id(db, examen.tipo_examen_id)
+    return ExamenResponse(
+        id=examen.id,
+        tipo_examen_id=examen.tipo_examen_id,
+        tipo_examen_nombre=tipo.nombre if tipo else None,
+        fecha_toma=examen.fecha_toma,
+        resultado=examen.resultado,
+        resultado_numerico=examen.resultado_numerico,
+        unidad=examen.unidad,
+        trimestre=examen.trimestre,
+        semana_gestacion=examen.semana_gestacion,
+        observaciones=examen.observaciones,
+        created_at=examen.created_at,
+    )
+
+
+async def create_gestante_exam(db: AsyncSession, gestante_id: str, data: ExamenCreate, staff_id: str) -> ExamenResponse:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    tipo = await clinical_repository.get_tipo_examen_by_id(db, data.tipo_examen_id)
+    if tipo is None:
+        raise NotFoundException("Tipo de examen no encontrado")
+
+    trimestre = _calcular_trimestre(data.semana_gestacion) if data.semana_gestacion else None
+
+    examen = ExamenLaboratorio(
+        gestante_id=gestante_id,
+        control_prenatal_id=data.control_prenatal_id,
+        tipo_examen_id=data.tipo_examen_id,
+        fecha_toma=data.fecha_toma,
+        resultado=data.resultado,
+        resultado_numerico=data.resultado_numerico,
+        unidad=data.unidad,
+        trimestre=trimestre,
+        semana_gestacion=data.semana_gestacion,
+        observaciones=data.observaciones,
+        created_by=staff_id,
+    )
+    examen = await clinical_repository.create_examen(db, examen)
+
+    return ExamenResponse(
+        id=examen.id,
+        tipo_examen_id=examen.tipo_examen_id,
+        tipo_examen_nombre=tipo.nombre,
+        fecha_toma=examen.fecha_toma,
+        resultado=examen.resultado,
+        resultado_numerico=examen.resultado_numerico,
+        unidad=examen.unidad,
+        trimestre=examen.trimestre,
+        semana_gestacion=examen.semana_gestacion,
+        observaciones=examen.observaciones,
+        created_at=examen.created_at,
+    )
+
+
+async def get_gestante_alarm_signs(db: AsyncSession, gestante_id: str) -> list[schemas.AlertaAdminResponse]:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    rows = await repository.get_alertas_by_gestante(db, gestante_id)
+    return [
+        schemas.AlertaAdminResponse(
+            id=alerta.id,
+            descripcion=alerta.descripcion,
+            estado=alerta.estado,
+            modulo_origen=alerta.modulo_origen,
+            tipo_alerta=tipo_alerta_nombre,
+            prioridad=prioridad_codigo,
+            created_at=alerta.created_at,
+        )
+        for alerta, tipo_alerta_nombre, prioridad_codigo in rows
+    ]
+
+
+async def get_gestante_daily_questions_history(db: AsyncSession, gestante_id: str) -> list[schemas.RespuestaConPreguntaResponse]:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    rows = await repository.get_respuestas_with_pregunta_by_gestante(db, gestante_id)
+    return [
+        schemas.RespuestaConPreguntaResponse(
+            id=r.id,
+            pregunta_id=r.pregunta_id,
+            pregunta_texto=pregunta_texto,
+            tipo_respuesta=tipo_respuesta,
+            respuesta_texto=r.respuesta_texto,
+            respuesta_booleana=r.respuesta_booleana,
+            respuesta_numerica=r.respuesta_numerica,
+            opcion_id=r.opcion_id,
+            semana_gestacion=r.semana_gestacion,
+            alerta_id=r.alerta_id,
+            created_at=r.created_at,
+        )
+        for r, pregunta_texto, tipo_respuesta in rows
+    ]
+
+
+# ---- Citas Admin ----
+
+async def get_all_appointments(
+    db: AsyncSession,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    gestante_id: str | None = None,
+) -> list[schemas.CitaAdminResponse]:
+    rows = await repository.get_all_citas(db, from_date, to_date, gestante_id)
+    return [
+        schemas.CitaAdminResponse(
+            id=c.id,
+            gestante_id=c.gestante_id,
+            codigo_gmi=codigo_gmi,
+            ips_id=c.ips_id,
+            ips_nombre=ips_nombre,
+            fecha_hora=c.fecha_hora,
+            tipo_cita=c.tipo_cita,
+            estado=c.estado,
+            created_at=c.created_at,
+        )
+        for c, codigo_gmi, ips_nombre in rows
+    ]
+
+
+async def get_gestante_appointments(db: AsyncSession, gestante_id: str) -> list[schemas.CitaAdminResponse]:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    rows = await repository.get_citas_by_gestante(db, gestante_id)
+    return [
+        schemas.CitaAdminResponse(
+            id=c.id,
+            gestante_id=c.gestante_id,
+            codigo_gmi=codigo_gmi,
+            ips_id=c.ips_id,
+            ips_nombre=ips_nombre,
+            fecha_hora=c.fecha_hora,
+            tipo_cita=c.tipo_cita,
+            estado=c.estado,
+            created_at=c.created_at,
+        )
+        for c, codigo_gmi, ips_nombre in rows
+    ]
+
+
+async def create_appointment(db: AsyncSession, data: schemas.CitaAdminCreate) -> schemas.CitaAdminResponse:
+    gestante = await clinical_repository.get_gestante_by_id(db, data.gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    dt = data.fecha_hora
+    if dt.tzinfo:
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    cita = CitaMedica(
+        gestante_id=data.gestante_id,
+        ips_id=data.ips_id,
+        fecha_hora=dt,
+        tipo_cita=data.tipo_cita,
+        estado="programada",
+    )
+    cita = await repository.create_cita_admin(db, cita)
+
+    # Re-query to get codigo_gmi and ips_nombre for response
+    row = await repository.get_cita_by_id_admin(db, cita.id)
+    if row is None:
+        raise NotFoundException("Cita no encontrada tras crearla")
+    c, codigo_gmi, ips_nombre = row
+    return schemas.CitaAdminResponse(
+        id=c.id,
+        gestante_id=c.gestante_id,
+        codigo_gmi=codigo_gmi,
+        ips_id=c.ips_id,
+        ips_nombre=ips_nombre,
+        fecha_hora=c.fecha_hora,
+        tipo_cita=c.tipo_cita,
+        estado=c.estado,
+        created_at=c.created_at,
+    )
+
+
+async def reprogramar_appointment(db: AsyncSession, appointment_id: str, data: CitaMedicaUpdate) -> schemas.CitaAdminResponse:
+    row = await repository.get_cita_by_id_admin(db, appointment_id)
+    if row is None:
+        raise NotFoundException("Cita no encontrada")
+    cita, codigo_gmi, ips_nombre = row
+    cita.fecha_hora = data.fecha_hora
+    cita = await repository.save_cita_admin(db, cita)
+    return schemas.CitaAdminResponse(
+        id=cita.id,
+        gestante_id=cita.gestante_id,
+        codigo_gmi=codigo_gmi,
+        ips_id=cita.ips_id,
+        ips_nombre=ips_nombre,
+        fecha_hora=cita.fecha_hora,
+        tipo_cita=cita.tipo_cita,
+        estado=cita.estado,
+        created_at=cita.created_at,
+    )
+
+
+async def cancelar_appointment(db: AsyncSession, appointment_id: str) -> schemas.CitaAdminResponse:
+    row = await repository.get_cita_by_id_admin(db, appointment_id)
+    if row is None:
+        raise NotFoundException("Cita no encontrada")
+    cita, codigo_gmi, ips_nombre = row
+    cita.estado = "cancelada"
+    cita = await repository.save_cita_admin(db, cita)
+    return schemas.CitaAdminResponse(
+        id=cita.id,
+        gestante_id=cita.gestante_id,
+        codigo_gmi=codigo_gmi,
+        ips_id=cita.ips_id,
+        ips_nombre=ips_nombre,
+        fecha_hora=cita.fecha_hora,
+        tipo_cita=cita.tipo_cita,
+        estado=cita.estado,
+        created_at=cita.created_at,
+    )
+
+
+async def confirmar_appointment(db: AsyncSession, appointment_id: str) -> schemas.CitaAdminResponse:
+    row = await repository.get_cita_by_id_admin(db, appointment_id)
+    if row is None:
+        raise NotFoundException("Cita no encontrada")
+    cita, codigo_gmi, ips_nombre = row
+    cita.estado = "confirmada"
+    cita = await repository.save_cita_admin(db, cita)
+    return schemas.CitaAdminResponse(
+        id=cita.id,
+        gestante_id=cita.gestante_id,
+        codigo_gmi=codigo_gmi,
+        ips_id=cita.ips_id,
+        ips_nombre=ips_nombre,
+        fecha_hora=cita.fecha_hora,
+        tipo_cita=cita.tipo_cita,
+        estado=cita.estado,
+        created_at=cita.created_at,
+    )
+
+
+async def create_gestante_emergency_call(db: AsyncSession, gestante_id: str, data: LlamadaEmergenciaCreate) -> LlamadaEmergenciaResponse:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    llamada = LlamadaEmergencia(
+        gestante_id=gestante_id,
+        motivo=data.motivo,
+        destino=data.destino,
+        resultado=data.resultado,
+    )
+    llamada = await repository.create_llamada_emergencia_admin(db, llamada)
+    return LlamadaEmergenciaResponse.model_validate(llamada)
+
+
+async def get_gestante_emergency_call_history(db: AsyncSession, gestante_id: str) -> list[LlamadaEmergenciaResponse]:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+
+    llamadas = await repository.get_llamadas_by_gestante(db, gestante_id)
+    return [LlamadaEmergenciaResponse.model_validate(l) for l in llamadas]
 
 
 # ---- 11.7 Exportación ----

@@ -9,6 +9,12 @@ from app.dependencies import get_current_staff
 from app.database.models.auth import UsuarioStaff
 from app.modules.admin import service
 from app.modules.admin import schemas
+from app.modules.clinical.schemas import (
+    ExamenCreate,
+    ExamenResponse,
+)
+from app.modules.admin.schemas import AlertaAdminResponse, RespuestaConPreguntaResponse, CitaAdminResponse, CitaAdminCreate
+from app.modules.m6.schemas import CitaMedicaUpdate, LlamadaEmergenciaCreate, LlamadaEmergenciaResponse
 
 router = APIRouter()
 
@@ -428,6 +434,148 @@ async def get_system_health(
     return await service.get_system_health(db)
 
 
+# ---- 12. Vista Admin de Gestantes (detalle de paciente) ----
+
+@router.get("/gestantes/{gestante_id}/exams", response_model=list[ExamenResponse])
+async def admin_get_gestante_exams(
+    gestante_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista de exámenes de laboratorio de la gestante (vista admin)."""
+    return await service.get_gestante_exams(db, gestante_id)
+
+
+@router.get("/gestantes/{gestante_id}/exams/{exam_id}", response_model=ExamenResponse)
+async def admin_get_gestante_exam_by_id(
+    gestante_id: str,
+    exam_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detalle de un examen específico (vista admin)."""
+    return await service.get_gestante_exam_by_id(db, gestante_id, exam_id)
+
+
+@router.post("/gestantes/{gestante_id}/exams", response_model=ExamenResponse, status_code=status.HTTP_201_CREATED)
+async def admin_create_gestante_exam(
+    gestante_id: str,
+    request: ExamenCreate,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Registrar resultado de examen para una gestante (vista admin)."""
+    return await service.create_gestante_exam(db, gestante_id, request, staff.id)
+
+
+@router.get("/gestantes/{gestante_id}/alarm-signs", response_model=list[AlertaAdminResponse])
+async def admin_get_gestante_alarm_signs(
+    gestante_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Signos de alarma activos de la gestante (vista admin)."""
+    return await service.get_gestante_alarm_signs(db, gestante_id)
+
+
+@router.get("/gestantes/{gestante_id}/daily-questions/history", response_model=list[RespuestaConPreguntaResponse])
+async def admin_get_gestante_daily_questions_history(
+    gestante_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Historial de respuestas a preguntas de seguimiento (vista admin)."""
+    return await service.get_gestante_daily_questions_history(db, gestante_id)
+
+
+# ---- Citas Admin ----
+
+@router.get("/appointments", response_model=list[CitaAdminResponse])
+async def admin_list_appointments(
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date: Optional[str] = Query(None, alias="to"),
+    gestante_id: Optional[str] = Query(None),
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista todas las citas con filtros opcionales por rango de fechas y gestante."""
+    f_date = datetime.fromisoformat(from_date) if from_date else None
+    t_date = datetime.fromisoformat(to_date) if to_date else None
+    return await service.get_all_appointments(db, f_date, t_date, gestante_id)
+
+
+@router.post("/appointments", response_model=CitaAdminResponse, status_code=status.HTTP_201_CREATED)
+async def admin_create_appointment(
+    request: CitaAdminCreate,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Crear nueva cita médica para una gestante."""
+    return await service.create_appointment(db, request)
+
+
+@router.get("/gestantes/{gestante_id}/appointments", response_model=list[CitaAdminResponse])
+async def admin_list_gestante_appointments(
+    gestante_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Citas de una gestante específica."""
+    return await service.get_gestante_appointments(db, gestante_id)
+
+
+@router.patch("/appointments/{appointment_id}", response_model=CitaAdminResponse)
+async def admin_reprogramar_appointment(
+    appointment_id: str,
+    request: CitaMedicaUpdate,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reprogramar cita (cambiar fecha_hora)."""
+    return await service.reprogramar_appointment(db, appointment_id, request)
+
+
+@router.post("/appointments/{appointment_id}/cancel", response_model=CitaAdminResponse)
+async def admin_cancelar_appointment(
+    appointment_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancelar cita (cambia estado a cancelada)."""
+    return await service.cancelar_appointment(db, appointment_id)
+
+
+@router.post("/appointments/{appointment_id}/confirm", response_model=CitaAdminResponse)
+async def admin_confirmar_appointment(
+    appointment_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Confirmar asistencia a cita médica."""
+    return await service.confirmar_appointment(db, appointment_id)
+
+
+@router.post("/gestantes/{gestante_id}/emergency-call", response_model=LlamadaEmergenciaResponse, status_code=status.HTTP_201_CREATED)
+async def admin_create_emergency_call(
+    gestante_id: str,
+    request: LlamadaEmergenciaCreate,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Registrar llamada de emergencia para una gestante."""
+    return await service.create_gestante_emergency_call(db, gestante_id, request)
+
+
+@router.get("/gestantes/{gestante_id}/emergency-call/history", response_model=list[LlamadaEmergenciaResponse])
+async def admin_emergency_call_history(
+    gestante_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Historial de llamadas de emergencia de una gestante."""
+    return await service.get_gestante_emergency_call_history(db, gestante_id)
+
+
 # ---- 11.7 Exportación ----
 
 @router.get("/export/gestantes")
@@ -445,6 +593,7 @@ async def export_gestantes(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="gestantes_{datetime.utcnow().strftime("%Y%m%d")}.{ext}"'},
     )
+
 
 @router.get("/export/indicators")
 async def export_indicators(
