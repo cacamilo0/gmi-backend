@@ -325,3 +325,59 @@ class SystemHealthResponse(BaseModel):
     database: str
     version: str
     uptime: str
+
+
+# ---- 12. Vista Admin de Gestantes ----
+
+class AlertaAdminResponse(BaseModel):
+    id: str
+    descripcion: Optional[str] = None
+    estado: str
+    modulo_origen: Optional[str] = None
+    tipo_alerta: Optional[str] = None
+    prioridad: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RespuestaConPreguntaResponse(BaseModel):
+    id: str
+    pregunta_id: int
+    pregunta_texto: str
+    tipo_respuesta: str
+    respuesta_texto: Optional[str] = None
+    respuesta_booleana: Optional[bool] = None
+    respuesta_numerica: Optional[int] = None
+    opcion_id: Optional[int] = None
+    semana_gestacion: Optional[int] = None
+    alerta_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---- Citas Admin ----
+
+class CitaAdminResponse(BaseModel):
+    id: str
+    gestante_id: str
+    codigo_gmi: str
+    ips_id: Optional[int] = None
+    ips_nombre: Optional[str] = None
+    fecha_hora: datetime
+    tipo_cita: Optional[str] = None
+    estado: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CitaAdminCreate(BaseModel):
+    gestante_id: str
+    ips_id: Optional[int] = None
+    fecha_hora: datetime
+    tipo_cita: Optional[str] = None
