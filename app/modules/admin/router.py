@@ -610,3 +610,18 @@ async def export_indicators(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="indicadores_{datetime.utcnow().strftime("%Y%m%d")}.{ext}"'},
     )
+    return await service.export_indicators(db, format)
+
+
+# ---- 11.9 Gestantes ----
+
+@router.get("/gestantes", response_model=list[schemas.GestanteListResponse])
+async def list_gestantes(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    sort: str = "fecha_desc",
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Listar gestantes con datos de seguimiento y alertas"""
+    return await service.get_gestantes(db, page, size, sort)
