@@ -25,6 +25,7 @@ from app.database.models.control import ControlPrenatal, SignosVitales
 from app.database.models.examenes import Ecografia, ExamenLaboratorio
 from app.database.models.gestante import Gestante
 from app.database.models.riesgo import Alerta, ClasificacionRiesgo
+from app.database.models.educacion import ChecklistItem
 from app.database.models.seguimiento import (
     OpcionPreguntaSeguimiento,
     PreguntaSeguimiento,
@@ -400,6 +401,19 @@ async def get_prioridad_by_codigo(db: AsyncSession, codigo: str) -> CatPrioridad
 async def get_ips_activas(db: AsyncSession) -> list[CatIps]:
     result = await db.execute(
         select(CatIps).where(CatIps.activo == True).order_by(CatIps.nivel)
+    )
+    return result.scalars().all()
+
+
+# ---- Checklist Items ----
+
+async def get_checklist_items_by_modulo(
+    db: AsyncSession, modulo_id: int
+) -> list[ChecklistItem]:
+    result = await db.execute(
+        select(ChecklistItem)
+        .where(ChecklistItem.modulo_id == modulo_id, ChecklistItem.activo == True)
+        .order_by(ChecklistItem.orden.asc().nulls_last(), ChecklistItem.texto)
     )
     return result.scalars().all()
 
