@@ -1,4 +1,4 @@
-from fastapi import Depends
+from fastapi import Depends, HTTPException, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -73,3 +73,24 @@ async def get_current_staff(
         raise UnauthorizedException("Usuario desactivado")
 
     return staff
+
+async def get_gestante_id_for_request(
+    gestante_id: str | None = Query(default=None),  
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    if user["role"] == "gestante":
+        result = await db.execute(
+            select(Gestante).where(Gestante.codigo_gmi == user["sub"])
+        )
+        gestante = result.scalar_one_or_none()
+        if gestante is None:
+            raise UnauthorizedException("Gestante no encontrada")
+        return gestante.id
+
+    elif user["role"] in ("clinico", "admin"):
+        if not gestante_id:
+            raise HTTPException(status_code=400, detail="Admin debe proveer gestante_id")
+        return gestante_id
+
+    raise UnauthorizedException("Rol no permitido")

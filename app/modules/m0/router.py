@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
-from app.dependencies import get_current_gestante, get_current_staff
+from app.dependencies import get_current_gestante, get_current_staff, get_gestante_id_for_request
 from app.database.models.gestante import Gestante
 from app.database.models.auth import UsuarioStaff
 from app.modules.m0 import service
@@ -74,11 +74,11 @@ async def get_obstetric_formula(
 @router.put("/profile/obstetric-formula", response_model=ObstetricFormulaResponse)
 async def update_obstetric_formula(
     request: ObstetricFormulaUpdate,
-    gestante: Gestante = Depends(get_current_gestante),
+    gestante_id: str = Depends(get_gestante_id_for_request), 
     db: AsyncSession = Depends(get_db),
 ):
     """Actualizar fórmula obstétrica."""
-    return await service.update_obstetric_formula(db, gestante.id, request)
+    return await service.update_obstetric_formula(db, gestante_id, request)
 
 
 # ---- Antecedentes Patológicos ----
@@ -95,32 +95,31 @@ async def get_pathological_history(
 @router.post("/profile/pathological-history", response_model=PathologicalHistoryResponse, status_code=201)
 async def create_pathological_history(
     request: PathologicalHistoryCreate,
-    gestante: Gestante = Depends(get_current_gestante),
+    gestante_id: str = Depends(get_gestante_id_for_request),  
     db: AsyncSession = Depends(get_db),
 ):
-    """Registrar nuevo antecedente patológico."""
-    return await service.create_pathological_history(db, gestante.id, request)
+    return await service.create_pathological_history(db, gestante_id, request)  
 
 
 @router.put("/profile/pathological-history/{antecedente_id}", response_model=PathologicalHistoryResponse)
 async def update_pathological_history(
     antecedente_id: str,
     request: PathologicalHistoryUpdate,
-    gestante: Gestante = Depends(get_current_gestante),
+    gestante_id: str = Depends(get_gestante_id_for_request),
     db: AsyncSession = Depends(get_db),
 ):
     """Actualizar antecedente patológico."""
-    return await service.update_pathological_history(db, gestante.id, antecedente_id, request)
+    return await service.update_pathological_history(db, gestante_id, antecedente_id, request)
 
 
 @router.delete("/profile/pathological-history/{antecedente_id}", status_code=204)
 async def delete_pathological_history(
     antecedente_id: str,
-    gestante: Gestante = Depends(get_current_gestante),
+    gestante_id: str = Depends(get_gestante_id_for_request),
     db: AsyncSession = Depends(get_db),
 ):
     """Eliminar antecedente patológico."""
-    await service.delete_pathological_history(db, gestante.id, antecedente_id)
+    await service.delete_pathological_history(db, gestante_id, antecedente_id)
 
 
 # ---- Consentimiento Informado ----
