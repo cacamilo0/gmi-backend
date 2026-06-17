@@ -58,7 +58,7 @@ async def get_current_staff(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UsuarioStaff:
-    if user["role"] not in ("clinico", "admin"):
+    if user["role"] not in ("clinico", "admin", "hospital"):
         raise UnauthorizedException("Este endpoint es solo para personal autorizado")
 
     result = await db.execute(
