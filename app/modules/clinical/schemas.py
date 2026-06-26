@@ -340,3 +340,13 @@ class IpsCercanaResponse(SQLModel):
     nombre: str
     nivel: int | None = None
     mensaje: str
+
+
+# ---- Checklist items ----
+
+class ChecklistItemResponse(SQLModel):
+    id: int
+    texto: str
+    modulo_id: int | None = None
+    semana_eg: int | None = None
+    orden: int | None = None

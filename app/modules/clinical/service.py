@@ -18,6 +18,7 @@ from app.modules.clinical import repository
 from app.modules.clinical.schemas import (
     AdherenciaResponse,
     BirthPlanResponse,
+    ChecklistItemResponse,
     ClasificacionRiesgoResponse,
     ControlPrenatalCreate,
     ControlPrenatalResponse,
@@ -843,3 +844,14 @@ async def get_nearest_ips(db: AsyncSession) -> IpsCercanaResponse:
         nivel=ips.nivel,
         mensaje="IPS disponible para atención. Comuníquese con su IPS de referencia para mayor información.",
     )
+
+
+# ---- Checklist Items ----
+
+async def get_checklist_items(
+    db: AsyncSession, gestante: Gestante
+) -> list[ChecklistItemResponse]:
+    if not gestante.modulo_activo_id:
+        return []
+    items = await repository.get_checklist_items_by_modulo(db, gestante.modulo_activo_id)
+    return [ChecklistItemResponse.model_validate(i) for i in items]

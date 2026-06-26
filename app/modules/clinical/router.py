@@ -11,6 +11,7 @@ from app.modules.clinical import service
 from app.modules.clinical.schemas import (
     AdherenciaResponse,
     BirthPlanResponse,
+    ChecklistItemResponse,
     ClasificacionRiesgoResponse,
     ControlPrenatalCreate,
     ControlPrenatalResponse,
@@ -428,6 +429,17 @@ async def history_daily_questions(
 ):
     """Historial de respuestas a preguntas de seguimiento (vista longitudinal)."""
     return await service.get_daily_questions_history(db, gestante.id)
+
+
+# ---- 4.15 Checklist Items ----
+
+@router.get("/checklist-items", response_model=list[ChecklistItemResponse])
+async def get_checklist_items(
+    gestante: Gestante = Depends(get_current_gestante),
+    db: AsyncSession = Depends(get_db),
+):
+    """Checklist items para el módulo activo de la gestante."""
+    return await service.get_checklist_items(db, gestante)
 
 
 
