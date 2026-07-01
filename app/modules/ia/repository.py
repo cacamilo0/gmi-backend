@@ -8,7 +8,7 @@ from app.database.models.control import ControlPrenatal, SignosVitales
 from app.database.models.examenes import ExamenLaboratorio
 from app.database.models.riesgo import ClasificacionRiesgo, Alerta
 from app.database.models.seguimiento import RespuestaSeguimiento, SintomaReportado
-from app.database.models.catalogos import CatModuloClinico
+from app.database.models.catalogos import CatModuloClinico, CatTipoAlerta, CatPrioridadAlerta
 
 
 # ---- Chat ----
@@ -152,3 +152,52 @@ async def create_clasificacion_riesgo(db: AsyncSession, clasificacion: Clasifica
     await db.flush()
     await db.refresh(clasificacion)
     return clasificacion
+
+# ---- Alertas IA ----
+
+async def get_tipo_alerta_by_codigo(db: AsyncSession, codigo: str) -> CatTipoAlerta | None:
+    result = await db.execute(
+        select(CatTipoAlerta).where(CatTipoAlerta.codigo == codigo)
+    )
+    return result.scalars().one_or_none()
+
+
+async def get_prioridad_by_codigo(db: AsyncSession, codigo: str) -> CatPrioridadAlerta | None:
+    result = await db.execute(
+        select(CatPrioridadAlerta).where(CatPrioridadAlerta.codigo == codigo)
+    )
+    return result.scalars().one_or_none()
+
+
+async def create_alerta(db: AsyncSession, alerta: Alerta) -> Alerta:
+    db.add(alerta)
+    await db.flush()
+    await db.refresh(alerta)
+    return alerta
+
+
+# ---- Staff: gestión de alertas ----
+
+async def get_alerta_by_id(db: AsyncSession, alerta_id: str) -> Alerta | None:
+    result = await db.execute(
+        select(Alerta).where(Alerta.id == alerta_id)
+    )
+    return result.scalars().one_or_none()
+
+
+async def get_alertas_with_catalogo_by_gestante(db: AsyncSession, gestante_id: str) -> list:
+    result = await db.execute(
+        select(Alerta, CatTipoAlerta.nombre, CatPrioridadAlerta.codigo)
+        .join(CatTipoAlerta, Alerta.tipo_alerta_id == CatTipoAlerta.id)
+        .join(CatPrioridadAlerta, Alerta.prioridad_id == CatPrioridadAlerta.id)
+        .where(Alerta.gestante_id == gestante_id)
+        .order_by(Alerta.created_at.desc())
+    )
+    return result.all()
+
+
+async def update_alerta(db: AsyncSession, alerta: Alerta) -> Alerta:
+    db.add(alerta)
+    await db.flush()
+    await db.refresh(alerta)
+    return alerta

@@ -79,4 +79,5 @@ class ChatIa(SQLModel, table=True):
     gestante_id: str = Field(foreign_key="gmi.gestante.id")
     rol: str = Field(max_length=20)
     contenido: str
+    alerta_id: str | None = Field(default=None, foreign_key="gmi.alerta.id")
     created_at: datetime | None = Field(default_factory=datetime.utcnow)
