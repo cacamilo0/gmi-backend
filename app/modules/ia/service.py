@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException
 from app.database.models.soporte import ChatIa
-from app.database.models.riesgo import ClasificacionRiesgo
+from app.database.models.riesgo import ClasificacionRiesgo, Alerta
 from app.database.models.gestante import Gestante
 from app.modules.ia import repository
 from app.modules.ia.schemas import (
@@ -17,6 +17,11 @@ from app.modules.ia.schemas import (
     TriageResponse,
     ClinicalSummaryResponse,
     ExplainabilityResponse,
+    AlertaGeneradaInfo,
+    AlertaResolverRequest,
+    AlertaStaffResponse,
+    ChatMensajeStaffResponse,
+    ChatHistorialStaffResponse,
 )
 from app.modules.ia.prompts import (
     build_contexto_clinico,
@@ -29,6 +34,7 @@ from app.modules.ia.prompts import (
     _calcular_semanas,
 )
 from app.services.openai import chat_completion
+
 
 # ---- Helpers ----
 
@@ -75,22 +81,63 @@ def _parse_json_response(response_text: str) -> dict:
     return json.loads(clean.strip())
 
 
+async def _crear_alerta_ia(
+    db: AsyncSession,
+    gestante_id: str,
+    nivel_urgencia: str,
+    descripcion: str,
+    clasificacion_riesgo_id: str | None = None,
+) -> Alerta | None:
+    """Crea una Alerta trazable cuando la IA detecta riesgo alto."""
+    tipo_alerta = await repository.get_tipo_alerta_by_codigo(db, "ia")
+    if tipo_alerta is None:
+        return None
+    prioridad_codigo = "rojo" if nivel_urgencia in ("inmediata", "rojo") else "amarillo"
+    prioridad = await repository.get_prioridad_by_codigo(db, prioridad_codigo)
+    if prioridad is None:
+        return None
+    alerta = Alerta(
+        gestante_id=gestante_id,
+        clasificacion_riesgo_id=clasificacion_riesgo_id,
+        tipo_alerta_id=tipo_alerta.id,
+        prioridad_id=prioridad.id,
+        estado="activa",
+        modulo_origen="IA",
+        descripcion=descripcion,
+    )
+    return await repository.create_alerta(db, alerta)
+
+
+def _detectar_señales_criticas(texto: str) -> str | None:
+    """Detección rápida de señales de alarma por palabras clave."""
+    texto_lower = texto.lower()
+    señales = {
+        "sangrado": ["sangrado", "hemorragia", "sangre abundante"],
+        "convulsiones": ["convulsión", "convulsiones", "convulsionando"],
+        "dificultad respiratoria": ["no puedo respirar", "dificultad para respirar"],
+        "dolor severo": ["dolor muy fuerte", "dolor insoportable", "dolor severo de cabeza"],
+        "pérdida de conciencia": ["me desmayé", "perdí el conocimiento"],
+        "movimientos fetales ausentes": ["no siento al bebé", "bebé no se mueve"],
+    }
+    for descripcion, keywords in señales.items():
+        if any(kw in texto_lower for kw in keywords):
+            return descripcion
+    return None
+
+
 # ---- Chat ----
 
 async def send_chat_message(db: AsyncSession, gestante: Gestante, mensaje: str) -> ChatMessageResponse:
     contexto, _, _ = await _get_contexto(db, gestante)
     system_prompt = build_system_prompt_chat(contexto)
 
-    # Cargar historial para memoria conversacional
     historial = await repository.get_historial_by_gestante(db, gestante.id)
 
-    # Construir mensajes para OpenAI
     messages = [{"role": "system", "content": system_prompt}]
     for h in historial:
         messages.append({"role": h.rol, "content": h.contenido})
     messages.append({"role": "user", "content": mensaje})
 
-    # Guardar mensaje del usuario
     msg_usuario = ChatIa(
         gestante_id=gestante.id,
         rol="user",
@@ -98,10 +145,8 @@ async def send_chat_message(db: AsyncSession, gestante: Gestante, mensaje: str) 
     )
     await repository.create_mensaje(db, msg_usuario)
 
-    # Llamar a OpenAI
     respuesta_texto = await chat_completion(messages, temperature=0.5, max_tokens=300)
 
-    # Guardar respuesta del asistente
     msg_asistente = ChatIa(
         gestante_id=gestante.id,
         rol="assistant",
@@ -109,11 +154,28 @@ async def send_chat_message(db: AsyncSession, gestante: Gestante, mensaje: str) 
     )
     msg_asistente = await repository.create_mensaje(db, msg_asistente)
 
+    alerta_info: AlertaGeneradaInfo | None = None
+    señales_criticas = _detectar_señales_criticas(mensaje)
+    if señales_criticas:
+        alerta = await _crear_alerta_ia(
+            db=db,
+            gestante_id=gestante.id,
+            nivel_urgencia="inmediata",
+            descripcion=f"Señal de alarma detectada en chat: {señales_criticas}",
+        )
+        if alerta:
+            alerta_info = AlertaGeneradaInfo(
+                alerta_id=alerta.id,
+                nivel_urgencia="inmediata",
+                descripcion=alerta.descripcion,
+            )
+
     return ChatMessageResponse(
         id=msg_asistente.id,
         rol=msg_asistente.rol,
         contenido=msg_asistente.contenido,
         created_at=msg_asistente.created_at,
+        alerta_generada=alerta_info,
     )
 
 
@@ -148,6 +210,7 @@ async def get_risk_summary(db: AsyncSession, gestante: Gestante) -> RiskSummaryR
         data = _parse_json_response(response_text)
     except (json.JSONDecodeError, ValueError):
         return RiskSummaryResponse(
+            assessment_id="",
             nivel_riesgo="amarillo",
             resumen="No se pudo generar el resumen de riesgo automáticamente.",
             factores_riesgo=[],
@@ -156,26 +219,44 @@ async def get_risk_summary(db: AsyncSession, gestante: Gestante) -> RiskSummaryR
             semana_gestacion=semanas,
         )
 
-    # Persistir clasificación de riesgo
+    nivel = data.get("nivel_riesgo", "amarillo")
+
     clasificacion = ClasificacionRiesgo(
         gestante_id=gestante.id,
         tipo_riesgo="obstetrico",
-        nivel=data.get("nivel_riesgo", "bajo"),
-        clasificacion_ia=data.get("nivel_riesgo", "amarillo"),
+        nivel=nivel,
+        clasificacion_ia=nivel,
         diagnostico_texto=data.get("resumen", ""),
         explicacion_ia=data.get("explicacion_ia", ""),
         fecha_evaluacion=datetime.utcnow(),
     )
-    await repository.create_clasificacion_riesgo(db, clasificacion)
+    clasificacion = await repository.create_clasificacion_riesgo(db, clasificacion)
+
+    alerta_info: AlertaGeneradaInfo | None = None
+    if nivel == "rojo":
+        alerta = await _crear_alerta_ia(
+            db=db,
+            gestante_id=gestante.id,
+            nivel_urgencia="rojo",
+            descripcion=f"Riesgo IA rojo: {data.get('resumen', '')[:200]}",
+            clasificacion_riesgo_id=clasificacion.id,
+        )
+        if alerta:
+            alerta_info = AlertaGeneradaInfo(
+                alerta_id=alerta.id,
+                nivel_urgencia="rojo",
+                descripcion=alerta.descripcion,
+            )
 
     return RiskSummaryResponse(
         assessment_id=clasificacion.id,
-        nivel_riesgo=data.get("nivel_riesgo", "amarillo"),
+        nivel_riesgo=nivel,
         resumen=data.get("resumen", ""),
         factores_riesgo=data.get("factores_riesgo", []),
         recomendaciones=data.get("recomendaciones", []),
         explicacion_ia=data.get("explicacion_ia", ""),
         semana_gestacion=semanas,
+        alerta_generada=alerta_info,
     )
 
 
@@ -228,11 +309,29 @@ async def run_triage(db: AsyncSession, gestante: Gestante, data: TriageRequest) 
             requiere_llamada_emergencia=False,
         )
 
+    nivel_urgencia = data_resp.get("nivel_urgencia", "urgente")
+
+    alerta_info: AlertaGeneradaInfo | None = None
+    if nivel_urgencia == "inmediata":
+        alerta = await _crear_alerta_ia(
+            db=db,
+            gestante_id=gestante.id,
+            nivel_urgencia="inmediata",
+            descripcion=f"Triage urgente: {data_resp.get('descripcion', '')[:200]}",
+        )
+        if alerta:
+            alerta_info = AlertaGeneradaInfo(
+                alerta_id=alerta.id,
+                nivel_urgencia=nivel_urgencia,
+                descripcion=alerta.descripcion,
+            )
+
     return TriageResponse(
-        nivel_urgencia=data_resp.get("nivel_urgencia", "urgente"),
+        nivel_urgencia=nivel_urgencia,
         descripcion=data_resp.get("descripcion", ""),
         acciones_recomendadas=data_resp.get("acciones_recomendadas", []),
         requiere_llamada_emergencia=data_resp.get("requiere_llamada_emergencia", False),
+        alerta_generada=alerta_info,
     )
 
 
@@ -307,3 +406,99 @@ async def get_explainability(db: AsyncSession, gestante: Gestante, assessment_id
         factores_determinantes=data.get("factores_determinantes", []),
         datos_utilizados=data.get("datos_utilizados", []),
     )
+
+
+# ---- Staff: explainability por gestante ----
+
+async def get_explainability_for_staff(
+    db: AsyncSession, gestante_id: str, assessment_id: str
+) -> ExplainabilityResponse:
+    from app.modules.m0.repository import get_gestante_by_id
+    gestante = await get_gestante_by_id(db, gestante_id)
+    if gestante is None:
+        raise NotFoundException("Gestante no encontrada")
+    return await get_explainability(db, gestante, assessment_id)
+
+
+# ---- Staff: historial de chat de una gestante ----
+
+async def get_chat_history_for_staff(
+    db: AsyncSession, gestante_id: str
+) -> ChatHistorialStaffResponse:
+    from app.modules.m0.repository import get_gestante_by_id
+    gestante = await get_gestante_by_id(db, gestante_id)
+    if gestante is None:
+        raise NotFoundException("Gestante no encontrada")
+    historial = await repository.get_historial_by_gestante(db, gestante_id, limit=100)
+    mensajes = [
+        ChatMensajeStaffResponse(
+            id=h.id, rol=h.rol, contenido=h.contenido, created_at=h.created_at,
+        )
+        for h in historial
+    ]
+    return ChatHistorialStaffResponse(
+        codigo_gmi=gestante.codigo_gmi,
+        mensajes=mensajes,
+        total=len(mensajes),
+    )
+
+
+# ---- Staff: gestión de alertas ----
+
+async def get_alertas_gestante(db: AsyncSession, gestante_id: str) -> list[AlertaStaffResponse]:
+    rows = await repository.get_alertas_with_catalogo_by_gestante(db, gestante_id)
+    return [
+        AlertaStaffResponse(
+            id=a.id,
+            gestante_id=a.gestante_id,
+            tipo_alerta_id=a.tipo_alerta_id,
+            tipo_alerta_nombre=tipo_nombre,
+            prioridad_id=a.prioridad_id,
+            prioridad_codigo=prioridad_codigo,
+            estado=a.estado,
+            modulo_origen=a.modulo_origen,
+            descripcion=a.descripcion,
+            clasificacion_riesgo_id=a.clasificacion_riesgo_id,
+            resuelta_por=a.resuelta_por,
+            fecha_resolucion=a.fecha_resolucion,
+            created_at=a.created_at,
+        )
+        for a, tipo_nombre, prioridad_codigo in rows
+    ]
+
+
+async def resolver_alerta(
+    db: AsyncSession, alerta_id: str, staff_id: str, data: AlertaResolverRequest,
+) -> AlertaStaffResponse:
+    alerta = await repository.get_alerta_by_id(db, alerta_id)
+    if alerta is None:
+        raise NotFoundException("Alerta no encontrada")
+
+    alerta.estado = "resuelta"
+    alerta.resuelta_por = staff_id
+    alerta.fecha_resolucion = datetime.utcnow()
+    if data.observaciones:
+        alerta.descripcion = f"{alerta.descripcion or ''} | Resolución: {data.observaciones}".strip(" |")
+
+    alerta = await repository.update_alerta(db, alerta)
+
+    rows = await repository.get_alertas_with_catalogo_by_gestante(db, alerta.gestante_id)
+    for a, tipo_nombre, prioridad_codigo in rows:
+        if a.id == alerta_id:
+            return AlertaStaffResponse(
+                id=a.id,
+                gestante_id=a.gestante_id,
+                tipo_alerta_id=a.tipo_alerta_id,
+                tipo_alerta_nombre=tipo_nombre,
+                prioridad_id=a.prioridad_id,
+                prioridad_codigo=prioridad_codigo,
+                estado=a.estado,
+                modulo_origen=a.modulo_origen,
+                descripcion=a.descripcion,
+                clasificacion_riesgo_id=a.clasificacion_riesgo_id,
+                resuelta_por=a.resuelta_por,
+                fecha_resolucion=a.fecha_resolucion,
+                created_at=a.created_at,
+            )
+
+    raise NotFoundException("Alerta no encontrada tras actualización")
