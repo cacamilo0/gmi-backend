@@ -25,7 +25,7 @@ from app.database.models.control import ControlPrenatal, SignosVitales
 from app.database.models.examenes import Ecografia, ExamenLaboratorio
 from app.database.models.gestante import Gestante
 from app.database.models.riesgo import Alerta, ClasificacionRiesgo
-from app.database.models.educacion import ChecklistItem
+from app.database.models.educacion import ChecklistItem, ChecklistGestante
 from app.database.models.seguimiento import (
     OpcionPreguntaSeguimiento,
     PreguntaSeguimiento,
@@ -416,4 +416,10 @@ async def get_checklist_items_by_modulo(
         .order_by(ChecklistItem.orden.asc().nulls_last(), ChecklistItem.texto)
     )
     return result.scalars().all()
+
+async def get_checklist_gestante(db: AsyncSession, gestante_id: str, item_id: int) -> ChecklistGestante | None:
+    result = await db.execute(
+        select(ChecklistGestante).where(ChecklistGestante.gestante_id == gestante_id, ChecklistGestante.checklist_item_id == item_id)
+    )
+    return result.scalars().one_or_none()
 

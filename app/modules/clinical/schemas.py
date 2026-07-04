@@ -350,3 +350,5 @@ class ChecklistItemResponse(SQLModel):
     modulo_id: int | None = None
     semana_eg: int | None = None
     orden: int | None = None
+    completado: bool
+    fecha_completado: datetime | None = None
