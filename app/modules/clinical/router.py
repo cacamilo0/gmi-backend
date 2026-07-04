@@ -441,5 +441,14 @@ async def get_checklist_items(
     """Checklist items para el módulo activo de la gestante."""
     return await service.get_checklist_items(db, gestante)
 
+@router.get("/checklist-items/{gestante_id}", response_model=list[ChecklistItemResponse])
+async def get_checklist_items(
+        gestante_id: str,
+        staff: UsuarioStaff = Depends(get_current_staff),
+        db: AsyncSession = Depends(get_db),
+):
+    """Checklist items para el módulo activo de la gestante."""
+    return await service.get_checklist_items_by_staff(db, gestante_id=gestante_id)
+
 
 

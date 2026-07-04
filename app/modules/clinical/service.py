@@ -869,3 +869,31 @@ async def get_checklist_items(
         ))
 
     return items_response
+
+async def get_checklist_items_by_staff(
+        db: AsyncSession, gestante_id: str
+) -> list[ChecklistItemResponse]:
+
+    gestante = await repository.get_gestante_by_id(db, gestante_id=gestante_id)
+
+    if gestante is None:
+        raise NotFoundException("No se encontró a ninguna gestante con ese código.")
+
+    if not gestante.modulo_activo_id:
+        return []
+    items = await repository.get_checklist_items_by_modulo(db, gestante.modulo_activo_id)
+
+    items_response = []
+    for item in items:
+        progreso = await repository.get_checklist_gestante(db, gestante.id, item.id)
+        items_response.append(ChecklistItemResponse(
+            id=item.id,
+            texto=item.texto,
+            modulo_id=item.modulo_id,
+            semana_eg=item.semana_eg,
+            orden=item.orden,
+            completado=progreso.completado if progreso else False,
+            fecha_completado=progreso.fecha_completado if progreso else None,
+        ))
+
+    return items_response
