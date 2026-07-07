@@ -195,8 +195,8 @@ async def report_symptom(db: AsyncSession, gestante: Gestante, data: SintomaCrea
     )
     sintoma = await repository.create_sintoma(db, sintoma)
 
-    # Generar alerta si la severidad es Moderado o Severo
-    if data.severidad in ("Moderado", "Severo"):
+    # Generar alerta si la severidad es Moderado, Leve y Severo
+    if data.severidad in ("Leve","Moderado","Severo"):
         prioridad_codigo = "rojo" if data.severidad == "Severo" else "amarillo"
         tipo_alerta = await repository.get_tipo_alerta_by_codigo(db, "seguimiento")
         prioridad = await repository.get_prioridad_by_codigo(db, prioridad_codigo)
