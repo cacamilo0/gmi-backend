@@ -169,6 +169,15 @@ async def send_chat_message(db: AsyncSession, gestante: Gestante, mensaje: str) 
                 nivel_urgencia="inmediata",
                 descripcion=alerta.descripcion,
             )
+            
+    contenido_final = msg_asistente.contenido
+    
+    if alerta_info and alerta_info.nivel_urgencia == "inmediata":
+        contenido_final += (
+            "\n\n Esta información ha sido remitida a un especialista. "
+            "Mantente tranquila y permanece atenta a nuestros canales de comunicación. "
+            "Un profesional se pondrá en contacto contigo lo antes posible."
+        ) 
 
     return ChatMessageResponse(
         id=msg_asistente.id,
