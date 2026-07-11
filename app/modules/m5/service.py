@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +14,27 @@ from app.modules.m5.schemas import ContenidoEducativoResponse, ContenidoEducativ
 
 # ---- Consulta de contenidos y categorias ----
 
+def _calcular_semanas_gestacion(fum: date) -> int:
+    """Calcula las semanas de gestación desde la FUM hasta hoy."""
+    hoy = date.today()
+    dias = (hoy - fum).days
+    return max(0, dias // 7)
+
 async def get_content_by_module(db: AsyncSession, gestante: Gestante) -> list[ContenidoEducativoResponse]:
-    contenidos = await repository.get_content_by_module(db, modulo_id=gestante.modulo_activo_id)
+    # 1. Intentar usar el módulo activo ya asignado en BD
+    modulo_id = gestante.modulo_activo_id
+
+    # 2. Si es NULL, calcular desde la FUM
+    if modulo_id is None and gestante.fecha_ultima_menstruacion:
+        semanas = _calcular_semanas_gestacion(gestante.fecha_ultima_menstruacion)
+        modulo = await repository.get_modulo_by_semanas_eg(db, semanas)
+        modulo_id = modulo.id if modulo else None
+
+    # 3. Si aún no hay módulo, retornar lista vacía
+    if modulo_id is None:
+        return []
+
+    contenidos = await repository.get_content_by_module(db, modulo_id=modulo_id)
     return [ContenidoEducativoResponse.model_validate(c) for c in contenidos]
 
 async def get_content_by_id(db: AsyncSession, content_id: int) -> ContenidoEducativoDetalleResponse:
