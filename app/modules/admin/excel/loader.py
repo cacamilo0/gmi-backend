@@ -33,7 +33,9 @@ def load_sheet(path: str | Path, sheet_name: str) -> list[dict]:
     )
 
     # Limpiar espacios en nombres de columna
-    df.columns = [str(c).strip() for c in df.columns]
+    # df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+
 
     # Descartar fila 3 del Excel (ahora índice 0 del df) que contiene los tipos
     # de dato: "Texto", "AAAA-MM-DD", "Entero", etc.
