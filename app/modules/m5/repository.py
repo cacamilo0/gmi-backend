@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from datetime import datetime
 from app.database.models.educacion import ContenidoEducativo, CatCategoriaEducativa, ProgresoEducativo, ChecklistItem, ChecklistGestante
 from app.database.models.desenlace import EvaluacionSaludMental
 from app.database.models.seguimiento import PreguntaSeguimiento, OpcionPreguntaSeguimiento, RespuestaSeguimiento
+from app.database.models.catalogos import CatModuloClinico
 
 # ---- Consulta de contenidos y categorias ----
 
@@ -146,3 +147,20 @@ async def create_autoevaluacion(db: AsyncSession, autoevaluacion: RespuestaSegui
     await db.flush()
     await db.refresh(autoevaluacion)
     return autoevaluacion
+
+async def get_modulo_by_semanas_eg(db: AsyncSession, semanas: int) -> CatModuloClinico | None:
+    """
+    Retorna el módulo clínico que corresponde a las semanas de gestación dadas.
+    Para M4 (puerperio), semana_eg_fin es NULL, por eso usamos OR IS NULL.
+    """
+    result = await db.execute(
+        select(CatModuloClinico).where(
+            CatModuloClinico.activo == True,
+            CatModuloClinico.semana_eg_inicio <= semanas,
+            or_(
+                CatModuloClinico.semana_eg_fin >= semanas,
+                CatModuloClinico.semana_eg_fin.is_(None)
+            )
+        ).order_by(CatModuloClinico.semana_eg_inicio)
+    )
+    return result.scalars().first()
