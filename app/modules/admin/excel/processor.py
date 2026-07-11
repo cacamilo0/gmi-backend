@@ -25,6 +25,12 @@ from app.modules.admin.excel.transformer import (
 from app.modules.admin import repository as repo
 from app.database.models.soporte import CargaExcel
 
+from app.database.models.catalogos import (
+    CatEspecialidad, CatMetodoAnticonceptivo, CatNacionalidad, CatEapb, CatPertenenciaEtnica, CatGrupoPoblacional, CatIps, CatTipoEcografia, CatTipoProfesional, 
+    CatTipoExamen, CatVacuna, CatTipoEcografia
+)
+
+
 
 
 class ProcessResult:
@@ -117,6 +123,36 @@ def _required_cat_id(
     return resolved, None
 
 
+
+async def _get_or_create_cat(
+    db: AsyncSession,
+    model,
+    nombre: str | None,
+    catalogs: dict,
+    cat_key: str,
+) -> int | None:
+    """Si el valor existe en catálogo retorna su ID, si no lo crea automáticamente."""
+    if not nombre:
+        return None
+
+    nombre_lower = nombre.lower()
+
+    # Ya existe en memoria
+    if nombre_lower in catalogs[cat_key]:
+        return catalogs[cat_key][nombre_lower]
+
+    # No existe → crear en BD
+    nuevo = model(nombre=nombre, activo=True)
+    db.add(nuevo)
+    await db.flush()
+    await db.refresh(nuevo)
+
+    # Actualizar cache en memoria para las siguientes filas
+    catalogs[cat_key][nombre_lower] = nuevo.id
+    return nuevo.id
+
+
+
 # Procesamiento por hoja
 
 async def _process_gestantes(
@@ -136,11 +172,16 @@ async def _process_gestantes(
             t.pop("_hemoclasificacion", None)
 
             # Catálogos opcionales para gestante (pueden ser None)
-            t["nacionalidad_id"]       = _cat_id(catalogs, "nacionalidad",       t.pop("_nacionalidad"))
-            t["eapb_id"]               = _cat_id(catalogs, "eapb",               t.pop("_eapb"))
-            t["pertenencia_etnica_id"] = _cat_id(catalogs, "pertenencia_etnica", t.pop("_pertenencia_etnica"))
-            t["grupo_poblacional_id"]  = _cat_id(catalogs, "grupo_poblacional",  t.pop("_grupo_poblacional"))
-
+            # t["nacionalidad_id"]       = _cat_id(catalogs, "nacionalidad",       t.pop("_nacionalidad"))
+            # t["eapb_id"]               = _cat_id(catalogs, "eapb",               t.pop("_eapb"))
+            # t["pertenencia_etnica_id"] = _cat_id(catalogs, "pertenencia_etnica", t.pop("_pertenencia_etnica"))
+            # t["grupo_poblacional_id"]  = _cat_id(catalogs, "grupo_poblacional",  t.pop("_grupo_poblacional"))
+            
+            t["nacionalidad_id"]       = await _get_or_create_cat(db, CatNacionalidad,      t.pop("_nacionalidad"),      catalogs, "nacionalidad")
+            t["eapb_id"]               = await _get_or_create_cat(db, CatEapb,              t.pop("_eapb"),              catalogs, "eapb")
+            t["pertenencia_etnica_id"] = await _get_or_create_cat(db, CatPertenenciaEtnica, t.pop("_pertenencia_etnica"),catalogs, "pertenencia_etnica")
+            t["grupo_poblacional_id"]  = await _get_or_create_cat(db, CatGrupoPoblacional,  t.pop("_grupo_poblacional"), catalogs, "grupo_poblacional")
+                 
             # FIX 2: savepoint por fila — si falla solo revierte esta fila
             async with db.begin_nested():
                 accion = await repo.upsert_gestante(db, t, formula)
@@ -180,14 +221,17 @@ async def _process_controles(
             sit_bio    = t.pop("_situaciones_bio")
 
             # Catálogos opcionales para control
-            t["ips_id"]              = _cat_id(catalogs, "ips",              t.pop("_ips"))
-            t["tipo_profesional_id"] = _cat_id(catalogs, "tipo_profesional", t.pop("_tipo_profesional"))
+            # t["ips_id"]              = _cat_id(catalogs, "ips",              t.pop("_ips"))
+            # t["tipo_profesional_id"] = _cat_id(catalogs, "tipo_profesional", t.pop("_tipo_profesional"))
+            
+            t["ips_id"]              = await _get_or_create_cat(db, CatIps,             t.pop("_ips"),              catalogs, "ips")
+            t["tipo_profesional_id"] = await _get_or_create_cat(db, CatTipoProfesional, t.pop("_tipo_profesional"), catalogs, "tipo_profesional")   
 
             # FIX 2: savepoint por fila
             async with db.begin_nested():
                 await repo.insert_control(
                     db, gestante_id, t, signos,
-                    riesgo_obs, dx_riesgo, riesgo_bio, sit_bio,
+                    riesgo_obs, dx_riesgo, riesgo_bio, sit_bio, 
                 )
 
             result.add_ok("controles", idx, "nueva")
@@ -215,17 +259,13 @@ async def _process_examenes(
                 result.add_error("examenes", idx, f"[examenes] Gestante '{codigo_gmi}' no encontrada.")
                 continue
 
-            # FIX 1: validar que el catálogo resuelva antes del INSERT (campo NOT NULL)
-            tipo_examen_id, cat_err = _required_cat_id(
-                catalogs, "tipo_examen", t.pop("_tipo_examen"), "tipo_examen", "examenes"
+            t["tipo_examen_id"] = await _get_or_create_cat(
+                db, CatTipoExamen, t.pop("_tipo_examen"), catalogs, "tipo_examen"
             )
-            if cat_err:
-                result.add_error("examenes", idx, cat_err)
+            if not t["tipo_examen_id"]:
+                result.add_error("examenes", idx, "[examenes] Campo obligatorio 'tipo_examen' está vacío")
                 continue
 
-            t["tipo_examen_id"] = tipo_examen_id
-
-            # FIX 2: savepoint por fila
             async with db.begin_nested():
                 await repo.insert_examen(db, gestante_id, t)
 
@@ -254,17 +294,13 @@ async def _process_ecografias(
                 result.add_error("ecografias", idx, f"[ecografias] Gestante '{codigo_gmi}' no encontrada.")
                 continue
 
-            # FIX 1: validar catálogo (campo NOT NULL)
-            tipo_ecografia_id, cat_err = _required_cat_id(
-                catalogs, "tipo_ecografia", t.pop("_tipo_ecografia"), "tipo_ecografia", "ecografias"
+            t["tipo_ecografia_id"] = await _get_or_create_cat(
+                db, CatTipoEcografia, t.pop("_tipo_ecografia"), catalogs, "tipo_ecografia"
             )
-            if cat_err:
-                result.add_error("ecografias", idx, cat_err)
+            if not t["tipo_ecografia_id"]:
+                result.add_error("ecografias", idx, "[ecografias] Campo obligatorio 'tipo_ecografia' está vacío")
                 continue
 
-            t["tipo_ecografia_id"] = tipo_ecografia_id
-
-            # FIX 2: savepoint por fila
             async with db.begin_nested():
                 await repo.insert_ecografia(db, gestante_id, t)
 
@@ -294,14 +330,17 @@ async def _process_vacunas(
                 continue
 
             # FIX 1: validar catálogo (campo NOT NULL)
-            vacuna_id, cat_err = _required_cat_id(
-                catalogs, "vacuna", t.pop("_vacuna"), "vacuna", "vacunas"
-            )
-            if cat_err:
-                result.add_error("vacunas", idx, cat_err)
-                continue
+            # vacuna_id, cat_err = _required_cat_id(
+            #     catalogs, "vacuna", t.pop("_vacuna"), "vacuna", "vacunas"
+            # )
+            # if cat_err:
+            #     result.add_error("vacunas", idx, cat_err)
+            #     continue
 
-            t["vacuna_id"] = vacuna_id
+            # t["vacuna_id"] = vacuna_id
+            
+            t["vacuna_id"] = await _get_or_create_cat(db, CatVacuna, t.pop("_vacuna"), catalogs, "vacuna")
+
 
             # FIX 2: savepoint por fila
             async with db.begin_nested():
@@ -333,14 +372,17 @@ async def _process_remisiones(
                 continue
 
             # FIX 1: validar catálogo (campo NOT NULL)
-            especialidad_id, cat_err = _required_cat_id(
-                catalogs, "especialidad", t.pop("_especialidad"), "especialidad", "remisiones"
-            )
-            if cat_err:
-                result.add_error("remisiones", idx, cat_err)
-                continue
+            # especialidad_id, cat_err = _required_cat_id(
+            #     catalogs, "especialidad", t.pop("_especialidad"), "especialidad", "remisiones"
+            # )
+            # if cat_err:
+            #     result.add_error("remisiones", idx, cat_err)
+            #     continue
 
-            t["especialidad_id"] = especialidad_id
+            # t["especialidad_id"] = especialidad_id
+            
+            t["especialidad_id"] = await _get_or_create_cat(db, CatEspecialidad, t.pop("_especialidad"), catalogs, "especialidad")
+
 
             # FIX 2: savepoint por fila
             async with db.begin_nested():
@@ -375,10 +417,12 @@ async def _process_desenlaces(
             anticoncepcion = t.pop("_anticoncepcion")
 
             # Método anticonceptivo es opcional, puede ser None
-            anticoncepcion["metodo_id"] = _cat_id(
-                catalogs, "metodo_anti", anticoncepcion.pop("_metodo")
-            )
-
+            # anticoncepcion["metodo_id"] = _cat_id(
+            #     catalogs, "metodo_anti", anticoncepcion.pop("_metodo")
+            # )
+            
+            anticoncepcion["metodo_id"] = await _get_or_create_cat(db, CatMetodoAnticonceptivo, anticoncepcion.pop("_metodo"), catalogs, "metodo_anti")
+             
             # FIX 2: savepoint por fila
             async with db.begin_nested():
                 await repo.insert_desenlace(db, gestante_id, t, rn, anticoncepcion)
@@ -442,3 +486,5 @@ async def process_excel(
     await repo.create_carga_detalles(db, carga.id, result.detalles)
 
     return carga
+
+
