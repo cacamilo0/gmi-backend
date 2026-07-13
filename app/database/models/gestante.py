@@ -66,4 +66,16 @@ class HistorialModulo(SQLModel, table=True):
     motivo: str | None = None
     origen: str | None = Field(default=None, max_length=20)  # 'sistema', 'clinico', 'admin'
     created_by: str | None = Field(default=None, foreign_key="gmi_auth.usuario_staff.id")
-    created_at: datetime | None = Field(default_factory=datetime.utcnow)
+    created_at: datetime | None = Field(default_factory=datetime.utcnow) 
+    
+       
+class SolicitudActivacion(SQLModel, table=True):
+    __tablename__ = "solicitud_activacion"
+    __table_args__ = {"schema": "gmi"}
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    codigo_gmi: str = Field(max_length=20, unique=True)
+    pregunta: str = Field(max_length=200)
+    hash_respuesta: str = Field(max_length=256)
+    estado: str = Field(default="pendiente", max_length=20)
+    created_at: datetime | None = Field(default_factory=datetime.utcnow)    

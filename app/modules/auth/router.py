@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import delete, select
 
+from app.core.security import hash_security_answer
 from app.database.session import get_db
 from app.dependencies import get_current_user
 from app.modules.auth import service
+from app.database.models.gestante import Gestante, PreguntaSeguridad, SolicitudActivacion
 from app.modules.auth.schemas import (
     GestanteLoginRequest,
     StaffLoginRequest,
@@ -12,6 +15,8 @@ from app.modules.auth.schemas import (
     SecurityQuestionResponse,
     PasswordResetRequest,
     PasswordResetConfirm,
+    SolicitudActivacionCreate,
+    SolicitudActivacionResponse,    
 )
 
 router = APIRouter()
@@ -64,3 +69,29 @@ async def confirm_password_reset(
     """Confirmar restablecimiento de contraseña con token."""
     # todo: implementar verificación de token y cambio de contraseña
     return {"detail": "Contraseña restablecida exitosamente"}
+
+
+@router.post("/solicitud-activacion", status_code=201)
+async def crear_solicitud_activacion(
+    request: SolicitudActivacionCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Permite a una gestante sin pregunta de seguridad enviar una solicitud de activación. Endpoint público."""
+    res_g = await db.execute(select(Gestante).where(Gestante.codigo_gmi == request.codigo_gmi))
+    gestante = res_g.scalar_one_or_none()
+    if not gestante:
+        raise HTTPException(status_code=404, detail="Código GMI no encontrado.")
+
+    res_p = await db.execute(select(PreguntaSeguridad).where(PreguntaSeguridad.gestante_id == gestante.id))
+    if res_p.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Esta cuenta ya se encuentra activa.")
+
+    await db.execute(delete(SolicitudActivacion).where(SolicitudActivacion.codigo_gmi == request.codigo_gmi))
+
+    db.add(SolicitudActivacion(
+        codigo_gmi=request.codigo_gmi,
+        pregunta=request.pregunta,
+        hash_respuesta=hash_security_answer(request.respuesta),
+    ))
+    await db.commit()
+    return {"detail": "Solicitud enviada. Espera la aprobación de tu médico o administrador."}
