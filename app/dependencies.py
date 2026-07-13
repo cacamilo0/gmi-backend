@@ -74,6 +74,27 @@ async def get_current_staff(
 
     return staff
 
+# dependencia para endpoints exclusivos de admin
+async def get_current_admin(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UsuarioStaff:
+    if user["role"] != "admin":
+        raise UnauthorizedException("Este endpoint es solo para administradores")
+
+    result = await db.execute(
+        select(UsuarioStaff).where(UsuarioStaff.id == user["sub"])
+    )
+    staff = result.scalar_one_or_none()
+
+    if staff is None:
+        raise UnauthorizedException("Usuario no encontrado")
+
+    if not staff.activo:
+        raise UnauthorizedException("Usuario desactivado")
+
+    return staff
+
 async def get_gestante_id_for_request(
     gestante_id: str | None = Query(default=None),  
     user: dict = Depends(get_current_user),

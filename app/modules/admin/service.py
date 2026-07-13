@@ -23,6 +23,7 @@ from app.modules.clinical import repository as clinical_repository
 from app.modules.clinical.schemas import (
     ExamenCreate,
     ExamenResponse,
+    SignosVitalesResponse,
 )
 from app.modules.m6.schemas import (
     CitaMedicaUpdate,
@@ -616,6 +617,30 @@ async def get_gestante_daily_questions_history(db: AsyncSession, gestante_id: st
             created_at=r.created_at,
         )
         for r, pregunta_texto, tipo_respuesta in rows
+    ]
+
+
+async def get_gestante_vitals(db: AsyncSession, gestante_id: str) -> list[SignosVitalesResponse]:
+    gestante = await clinical_repository.get_gestante_by_id(db, gestante_id)
+    if not gestante:
+        raise NotFoundException("Gestante no encontrada")
+    rows = await clinical_repository.get_vitales_by_gestante(db, gestante_id)
+    return [
+        SignosVitalesResponse(
+            id=sv.id,
+            control_prenatal_id=sv.control_prenatal_id,
+            fecha_control=fecha_control,
+            peso_kg=sv.peso_kg,
+            talla_cm=sv.talla_cm,
+            imc=sv.imc,
+            estado_nutricional_id=sv.estado_nutricional_id,
+            altura_uterina=sv.altura_uterina,
+            presion_sistolica=sv.presion_sistolica,
+            presion_diastolica=sv.presion_diastolica,
+            fcf=sv.fcf,
+            created_at=sv.created_at,
+        )
+        for sv, fecha_control in rows
     ]
 
 

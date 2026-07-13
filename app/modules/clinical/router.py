@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
-from app.dependencies import get_current_gestante, get_current_staff
+from app.dependencies import get_current_gestante, get_current_staff, get_current_admin, get_gestante_id_for_request
 from app.database.models.auth import UsuarioStaff
 from app.database.models.gestante import Gestante
 from app.modules.clinical import service
@@ -101,20 +101,20 @@ async def get_symptoms(
 @router.post("/vitals", response_model=SignosVitalesResponse, status_code=201)
 async def register_vitals(
     request: SignosVitalesCreate,
-    staff: UsuarioStaff = Depends(get_current_staff),
+    admin: UsuarioStaff = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Registrar signos vitales y peso. Solo staff. Requiere control_prenatal_id."""
-    return await service.register_vitals(db, request, staff.id)
+    """Registrar signos vitales y peso. Solo administradores. Requiere control_prenatal_id."""
+    return await service.register_vitals(db, request, admin.id)
 
 
 @router.get("/vitals", response_model=list[SignosVitalesResponse])
 async def get_vitals(
-    gestante: Gestante = Depends(get_current_gestante),
+    gestante_id: str = Depends(get_gestante_id_for_request),
     db: AsyncSession = Depends(get_db),
 ):
-    """Historial de signos vitales."""
-    return await service.get_vitals_history(db, gestante.id)
+    """Historial de signos vitales. Gestante (auto) o admin (?gestante_id)."""
+    return await service.get_vitals_history(db, gestante_id)
 
 
 # ---- 4.4 Clasificación de Riesgo ----
