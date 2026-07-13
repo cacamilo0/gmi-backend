@@ -1,21 +1,25 @@
 from typing import Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, File, UploadFile, status, Query
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 
 from app.database.session import get_db
 from app.dependencies import get_current_staff
 from app.database.models.auth import UsuarioStaff
 from app.modules.admin import service
 from app.modules.admin import schemas
+from app.modules.auth.schemas import SolicitudActivacionResponse
 from app.modules.clinical.schemas import (
     ExamenCreate,
     ExamenResponse,
 )
 from app.modules.admin.schemas import AlertaAdminResponse, RespuestaConPreguntaResponse, CitaAdminResponse, CitaAdminCreate
 from app.modules.m6.schemas import CitaMedicaUpdate, LlamadaEmergenciaCreate, LlamadaEmergenciaResponse
+from app.modules.admin.schemas import CitaAdminCreate, CitaAdminResponse
 
+from app.database.models.gestante import Gestante, PreguntaSeguridad, SolicitudActivacion
 router = APIRouter()
 
 
@@ -625,3 +629,51 @@ async def list_gestantes(
 ):
     """Listar gestantes con datos de seguimiento y alertas"""
     return await service.get_gestantes(db, page, size, sort)
+
+
+@router.get("/solicitudes-activacion", response_model=list[SolicitudActivacionResponse])
+async def listar_solicitudes_activacion(
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Listar solicitudes de activación pendientes."""
+    res = await db.execute(
+        select(SolicitudActivacion)
+        .where(SolicitudActivacion.estado == "pendiente")
+        .order_by(SolicitudActivacion.created_at.desc())
+    )
+    return res.scalars().all()
+
+
+@router.post("/solicitudes-activacion/{solicitud_id}/resolver")
+async def resolver_solicitud_activacion(
+    solicitud_id: str,
+    aprobar: bool = Query(...),
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aprobar o rechazar una solicitud de activación."""
+    res_s = await db.execute(select(SolicitudActivacion).where(SolicitudActivacion.id == solicitud_id))
+    solicitud = res_s.scalar_one_or_none()
+    if not solicitud:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada.")
+    if solicitud.estado != "pendiente":
+        raise HTTPException(status_code=400, detail="Esta solicitud ya fue resuelta.")
+
+    if aprobar:
+        res_g = await db.execute(select(Gestante).where(Gestante.codigo_gmi == solicitud.codigo_gmi))
+        gestante = res_g.scalar_one_or_none()
+        if not gestante:
+            raise HTTPException(status_code=404, detail="Gestante no encontrada.")
+        db.add(PreguntaSeguridad(
+            gestante_id=gestante.id,
+            pregunta=solicitud.pregunta,
+            hash_respuesta=solicitud.hash_respuesta,
+        ))
+        solicitud.estado = "aprobada"
+    else:
+        solicitud.estado = "rechazada"
+
+    db.add(solicitud)
+    await db.commit()
+    return {"detail": "Solicitud procesada correctamente."}

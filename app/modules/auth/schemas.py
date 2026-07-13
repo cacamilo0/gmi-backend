@@ -1,4 +1,6 @@
 from sqlmodel import SQLModel
+from pydantic import BaseModel
+from datetime import datetime
 
 # no tienen 'table=True' porque son schemas de pydantic puros
 # para validación y serialización
@@ -29,3 +31,18 @@ class PasswordResetRequest(SQLModel):
 class PasswordResetConfirm(SQLModel):
     token: str
     new_password: str
+    
+class SolicitudActivacionCreate(BaseModel):
+    codigo_gmi: str
+    pregunta: str
+    respuesta: str
+
+class SolicitudActivacionResponse(BaseModel):
+    id: str
+    codigo_gmi: str
+    pregunta: str
+    estado: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
