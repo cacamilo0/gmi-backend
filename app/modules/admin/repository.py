@@ -548,8 +548,7 @@ async def update_checklist_item(
     if obj is None:
         return None
     for k, v in data.items():
-        if v is not None:
-            setattr(obj, k, v)
+        setattr(obj, k, v)
     await db.flush()
     await db.refresh(obj)
     return obj
