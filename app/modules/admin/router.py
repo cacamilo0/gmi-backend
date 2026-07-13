@@ -12,6 +12,7 @@ from app.modules.admin import schemas
 from app.modules.clinical.schemas import (
     ExamenCreate,
     ExamenResponse,
+    SignosVitalesResponse,
 )
 from app.modules.admin.schemas import AlertaAdminResponse, RespuestaConPreguntaResponse, CitaAdminResponse, CitaAdminCreate
 from app.modules.m6.schemas import CitaMedicaUpdate, LlamadaEmergenciaCreate, LlamadaEmergenciaResponse
@@ -486,6 +487,16 @@ async def admin_get_gestante_daily_questions_history(
 ):
     """Historial de respuestas a preguntas de seguimiento (vista admin)."""
     return await service.get_gestante_daily_questions_history(db, gestante_id)
+
+
+@router.get("/gestantes/{gestante_id}/vitals", response_model=list[SignosVitalesResponse])
+async def admin_get_gestante_vitals(
+    gestante_id: str,
+    staff: UsuarioStaff = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Historial de signos vitales de la gestante (vista admin/staff)."""
+    return await service.get_gestante_vitals(db, gestante_id)
 
 
 # ---- Citas Admin ----
