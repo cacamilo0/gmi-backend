@@ -21,14 +21,16 @@ def _calcular_semanas_gestacion(fum: date) -> int:
     return max(0, dias // 7)
 
 async def get_content_by_module(db: AsyncSession, gestante: Gestante) -> list[ContenidoEducativoResponse]:
-    # 1. Intentar usar el módulo activo ya asignado en BD
-    modulo_id = gestante.modulo_activo_id
-
-    # 2. Si es NULL, calcular desde la FUM
-    if modulo_id is None and gestante.fecha_ultima_menstruacion:
+    # 1. Calcular el módulo real según la semana de gestación actual (FUM)
+    modulo_id = None
+    if gestante.fecha_ultima_menstruacion:
         semanas = _calcular_semanas_gestacion(gestante.fecha_ultima_menstruacion)
         modulo = await repository.get_modulo_by_semanas_eg(db, semanas)
         modulo_id = modulo.id if modulo else None
+
+    # 2. Si no se pudo calcular (sin FUM), usar el valor cacheado en BD como fallback
+    if modulo_id is None:
+        modulo_id = gestante.modulo_activo_id
 
     # 3. Si aún no hay módulo, retornar lista vacía
     if modulo_id is None:
@@ -66,7 +68,18 @@ async def marcar_completado(db: AsyncSession, gestante_id: str, content_id: int)
 # ---- Checklist gestante ----
 
 async def get_checklist(db: AsyncSession, gestante: Gestante) -> ChecklistResponse:
-    items = await repository.get_checklist_items(db, gestante.modulo_activo_id)
+    # Calcular el módulo real según la semana de gestación actual (FUM)
+    modulo_id = None
+    if gestante.fecha_ultima_menstruacion:
+        semanas = _calcular_semanas_gestacion(gestante.fecha_ultima_menstruacion)
+        modulo = await repository.get_modulo_by_semanas_eg(db, semanas)
+        modulo_id = modulo.id if modulo else None
+
+    # Si no se pudo calcular (sin FUM), usar el valor cacheado en BD como fallback
+    if modulo_id is None:
+        modulo_id = gestante.modulo_activo_id
+
+    items = await repository.get_checklist_items(db, modulo_id)
 
     items_response = []
     for item in items:
@@ -80,7 +93,7 @@ async def get_checklist(db: AsyncSession, gestante: Gestante) -> ChecklistRespon
         ))
 
     return ChecklistResponse(
-        modulo_id=gestante.modulo_activo_id,
+        modulo_id=modulo_id,
         total_items=len(items),
         completados=sum(1 for i in items_response if i.completado),
         items=items_response,
